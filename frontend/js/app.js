@@ -95,7 +95,7 @@ async function selectBur(id) {
 // Update bur position
 async function updateBurPosition(id, newX, newY) {
   try {
-    await api('/burar/' + id, { method: 'PUT', body: JSON.stringify({ x: newX, y: newY }) });
+    await api('/api/burar/' + id, { method: 'PUT', body: JSON.stringify({ x: newX, y: newY }) });
     await loadBurar();
   } catch (e) {
     console.error('Position update failed:', e.message);
@@ -112,7 +112,7 @@ async function createBur() {
   const color = colorBtn ? colorBtn.dataset.color : 'gron';
 
   try {
-    await api('/burar', { method: 'POST', body: JSON.stringify({ name, x, y, color_status: color }) });
+    await api('/api/burar', { method: 'POST', body: JSON.stringify({ name, x, y, color_status: color }) });
     await loadBurar();
     document.getElementById('burModal').style.display = 'none';
     selectedBurId = null;
@@ -130,7 +130,7 @@ async function updateBur() {
   const colorBtn = document.querySelector('.color-btn.active');
   const color = colorBtn ? colorBtn.dataset.color : 'gron';
   try {
-    await api('/burar/' + selectedBurId, { method: 'PUT', body: JSON.stringify({ name, x, y, color_status: color }) });
+    await api('/api/burar/' + selectedBurId, { method: 'PUT', body: JSON.stringify({ name, x, y, color_status: color }) });
     await loadBurar();
     document.getElementById('burModal').style.display = 'none';
   } catch (e) {
@@ -141,7 +141,7 @@ async function updateBur() {
 // Check-in a bur
 async function checkinBur(burId) {
   try {
-    const result = await api('/checkin', { method: 'POST', body: JSON.stringify({ bur_id: burId }) });
+    const result = await api('/api/checkin', { method: 'POST', body: JSON.stringify({ bur_id: burId }) });
     await loadBurar();
     updateStats();
   } catch (e) {
@@ -153,7 +153,7 @@ async function checkinBur(burId) {
 async function deleteBur(id) {
   if (!confirm('Ta bort denna rullbur?')) return;
   try {
-    await api('/burar/' + id, { method: 'DELETE' });
+    await api('/api/burar/' + id, { method: 'DELETE' });
     await loadBurar();
     selectedBurId = null;
     document.getElementById('burModal').style.display = 'none';
@@ -188,7 +188,7 @@ function updateStats() {
 // Load all burar
 async function loadBurar() {
   try {
-    burar = await api('/burar');
+    burar = await api('/api/burar');
     renderBurar();
     updateStats();
   } catch (e) {
@@ -202,7 +202,7 @@ async function loginWithRFID() {
   const tag = prompt('Skanna eller ange RFID-taggen:');
   if (!tag) return;
   try {
-    const data = await api('/auth/login', { method: 'POST', body: JSON.stringify({ rfid_tag: tag }) });
+    const data = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ rfid_tag: tag }) });
     localStorage.setItem('token', data.token);
     currentEmployee = data.employee;
     document.getElementById('userInfo').style.display = 'flex';

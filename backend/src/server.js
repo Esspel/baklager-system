@@ -45,7 +45,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 // --- AUTH / RFID LOGIN ---
-app.post('/auth/login', async (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { rfid_tag } = req.body;
   if (!rfid_tag) return res.status(400).json({ error: 'RFID tag required' });
 
@@ -70,7 +70,7 @@ app.post('/auth/login', async (req, res) => {
 
 // --- RULLBURAR ---
 // GET all wheelbarrows
-app.get('/burar', async (req, res) => {
+app.get('/api/burar', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -100,7 +100,7 @@ app.get('/burar', async (req, res) => {
 });
 
 // GET single bur
-app.get('/burar/:id', async (req, res) => {
+app.get('/api/burar/:id', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM burar WHERE id = $1', [req.params.id]);
     if (result.rowCount === 0) return res.status(404).json({ error: 'Not found' });
@@ -111,7 +111,7 @@ app.get('/burar/:id', async (req, res) => {
 });
 
 // POST create bur (requires auth)
-app.post('/burar', auth, async (req, res) => {
+app.post('/api/burar', auth, async (req, res) => {
   try {
     const { name, x, y, color_status } = req.body;
     const result = await pool.query(
@@ -140,7 +140,7 @@ app.put('/burar/:id', auth, async (req, res) => {
 });
 
 // DELETE bur
-app.delete('/burar/:id', auth, async (req, res) => {
+app.delete('/api/burar/:id', auth, async (req, res) => {
   try {
     await pool.query('DELETE FROM burar WHERE id = $1', [req.params.id]);
     res.json({ deleted: true });
@@ -150,7 +150,7 @@ app.delete('/burar/:id', auth, async (req, res) => {
 });
 
 // --- CHECK-IN ---
-app.post('/checkin', auth, async (req, res) => {
+app.post('/api/checkin', auth, async (req, res) => {
   try {
     const { bur_id } = req.body;
     if (!bur_id) return res.status(400).json({ error: 'bur_id required' });
@@ -170,7 +170,7 @@ app.post('/checkin', auth, async (req, res) => {
 });
 
 // --- EMPLOYEES / RFID ---
-app.get('/employees', auth, async (req, res) => {
+app.get('/api/employees', auth, async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name, rfid_tag FROM employees ORDER BY name');
     res.json(result.rows);
@@ -179,7 +179,7 @@ app.get('/employees', auth, async (req, res) => {
   }
 });
 
-app.post('/employees', auth, async (req, res) => {
+app.post('/api/employees', auth, async (req, res) => {
   try {
     const { name, rfid_tag } = req.body;
     const result = await pool.query(
@@ -192,7 +192,7 @@ app.post('/employees', auth, async (req, res) => {
   }
 });
 
-app.post('/employees/:id/rfid', auth, async (req, res) => {
+app.post('/api/employees/:id/rfid', auth, async (req, res) => {
   try {
     const { tag_id } = req.body;
     await pool.query('UPDATE rfid_tags SET employee_id = $1, tag_id = $2 WHERE id = $3',
@@ -204,13 +204,13 @@ app.post('/employees/:id/rfid', auth, async (req, res) => {
   }
 });
 
-app.delete('/employees/:id/rfid', auth, async (req, res) => {
+app.delete('/api/employees/:id/rfid', auth, async (req, res) => {
   await pool.query('UPDATE rfid_tags SET employee_id = NULL WHERE id = $1', [req.params.id]);
   res.json({ success: true });
 });
 
 // --- STATISTICS ---
-app.get('/stats/bur/:id', auth, async (req, res) => {
+app.get('/api/stats/bur/:id', auth, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
