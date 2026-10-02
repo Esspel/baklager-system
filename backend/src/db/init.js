@@ -24,8 +24,9 @@ async function init() {
     CREATE TABLE IF NOT EXISTS roles (
       id SERIAL PRIMARY KEY,
       name VARCHAR(50) UNIQUE NOT NULL
-    );
+    )`);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS burar (
       id SERIAL PRIMARY KEY,
       name VARCHAR(50) NOT NULL,
@@ -34,22 +35,24 @@ async function init() {
       color_status VARCHAR(10) DEFAULT 'gron',
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
-    );
+    )`);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS employees (
       id SERIAL PRIMARY KEY,
       name VARCHAR(100) NOT NULL,
       role_id INTEGER REFERENCES roles(id) DEFAULT 2,
       created_at TIMESTAMP DEFAULT NOW()
-    );
+    )`);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS checkins (
       id SERIAL PRIMARY KEY,
       bur_id INTEGER REFERENCES burar(id) ON DELETE CASCADE,
       employee_id INTEGER REFERENCES employees(id),
       status VARCHAR(20) DEFAULT 'kollad',
       checked_at TIMESTAMP DEFAULT NOW()
-    );
+    )`);
 
   // Create indexes for performance
   await pool.query('CREATE INDEX IF NOT EXISTS idx_checkins_bur_id ON checkins(bur_id)');
@@ -89,6 +92,16 @@ async function init() {
         ('admin'),
         ('user')`
     );
+  }
+
+  // Make first employee admin if not already set
+  const firstEmp = await pool.query('SELECT id FROM employees WHERE role_id IS NULL OR role_id = 2 LIMIT 1');
+  if (firstEmp.rows.length > 0) {
+    await pool.query(
+      'UPDATE employees SET role_id = (SELECT id FROM roles WHERE name = \'admin\') WHERE id = $1',
+      [firstEmp.rows[0].id]
+    );
+    console.log('Set first employee as admin');
   }
 
   console.log('Database initialized successfully.');
