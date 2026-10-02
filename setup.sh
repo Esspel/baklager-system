@@ -95,8 +95,14 @@ check_connectivity() {
 
 health_check() {
   INFO "Kör hälsokontroll..."
-  curl -sf http://localhost/api/health && LOG "Backend OK" || WARN "Backend svarar inte på /api/health"
-  curl -sf http://localhost/ && LOG "Frontend OK" || WARN "Frontend svarar inte"
+  # Kontrollera att /api/health returnerar JSON (inte HTML)
+  local health_response=$(curl -sf http://localhost/api/health 2>/dev/null || echo "")
+  if echo "$health_response" | grep -q '"status"'; then
+    LOG "Backend OK ($health_response)"
+  else
+    WARN "Backend svarar inte på /api/health (fick: ${health_response:0:80})"
+  fi
+  curl -sf http://localhost/ > /dev/null 2>&1 && LOG "Frontend OK" || WARN "Frontend svarar inte"
 }
 
 check_updates() {
