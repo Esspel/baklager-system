@@ -2,8 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 
 dotenv.config({ path: '../.env' });
 
@@ -60,7 +58,7 @@ app.post('/auth/login', async (req, res) => {
 
   const employee = result.rows[0];
   const token = jwt.sign(
-    { id: employee.id, name: employee.name, rfid: rfid_tag },
+    { id: employee.id, name: employee.name },
     JWT_SECRET,
     { expiresIn: '8h' }
   );
@@ -69,112 +67,166 @@ app.post('/auth/login', async (req, res) => {
 });
 
 // --- RULLBURAR ---
-// GET all wheelbarrows (public-ish data for map)
+// GET all wheelbarrows
 app.get('/burar', async (req, res) => {
-  const result = await pool.query(`
-    SELECT b.*, c.employee_id,
-           c.checked_at, c.status,
-           c.id as checkin_id,
-           e.name as checked_by_name
-    FROM burar b
-    LEFT JOIN checkins c ON c.id = (
-      SELECT id FROM checkins WHERE bur_id = b.id ORDER BY checked_at DESC LIMIT 1
-    )
-    LEFT JOIN employees e ON c.employee_id = e.id
-    ORDER BY b.name ASC
-  `);
-  res.json(result.rows);
+  try {
+    const result = await pool.query(`
+      SELECT
+        b.id,
+        b.name,
+        b.x,
+        b.y,
+        b.color_status,
+        b.created_at,
+        c.checked_at,
+        c.employee_id as checked_by_id,
+        e.name as checked_by_name
+      FROM burar b
+      LEFT JOIN (
+        SELECT DISTINCT ON (bur_id) *
+        FROM checkins
+        ORDER BY bur_id, checked_at DESC
+      ) c ON c.bur_id = b.id
+      LEFT JOIN employees e ON e.id = c.employee_id
+      ORDER BY b.name ASC
+    `);
+    res.json(result.rows);
+  } catch (e) {
+    console.error('DB Error in /burar:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // GET single bur
 app.get('/burar/:id', async (req, res) => {
-  const result = await pool.query(
-    'SELECT * FROM burar WHERE id = $1',
-    [req.params.id]
-  );
-  if (result.rowCount === 0) return res.status(404).json({ error: 'Not found' });
-  res.json(result.rows[0]);
+  try {
+    const result = await pool.query('SELECT * FROM burar WHERE id = $1', [req.params.id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // POST create bur (requires auth)
 app.post('/burar', auth, async (req, res) => {
-  const { name, x, y, color_status } = req.body;
-  const result = await pool.query(
-    'INSERT INTO burar (name, x, y, color_status) VALUES ($1, $2, $3, $4) RETURNING *',
-    [name, x || 10, y || 10, color_status || 'gron']
-  );
-  res.status(201).json(result.rows[0]);
+  try {
+    const { name, x, y, color_status } = req.body;
+    const result = await pool.query(
+      'INSERT INTO burar (name, x, y, color_status) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, x || 10, y || 10, color_status || 'gron']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // PUT update bur (name, position, status color)
 app.put('/burar/:id', auth, async (req, res) => {
-  const { name, x, y, color_status } = req.body;
-  const result = await pool.query(
-    'UPDATE burar SET name = COALESCE($1, name), x = COALESCE($2, x), y = COALESCE($3, y), color_status = COALESCE($4, color_status) WHERE id = $5 RETURNING *',
-    [name, x, y, color_status, req.params.id]
-  );
-  if (result.rowCount === 0) return res.status(404).json({ error: 'Not found' });
-  res.json(result.rows[0]);
+  try {
+    const { name, x, y, color_status } = req.body;
+    const result = await pool.query(
+      'UPDATE burar SET name = COALESCE($1, name), x = COALESCE($2, x), y = COALESCE($3, y), color_status = COALESCE($4, color_status), updated_at = NOW() WHERE id = $5 RETURNING *',
+      [name, x, y, color_status, req.params.id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // DELETE bur
 app.delete('/burar/:id', auth, async (req, res) => {
-  await pool.query('DELETE FROM burar WHERE id = $1', [req.params.id]);
-  res.json({ deleted: true });
+  try {
+    await pool.query('DELETE FROM burar WHERE id = $1', [req.params.id]);
+    res.json({ deleted: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // --- CHECK-IN ---
 app.post('/checkin', auth, async (req, res) => {
-  const { bur_id } = req.body;
-  if (!bur_id) return res.status(400).json({ error: 'bur_id required' });
+  try {
+    const { bur_id } = req.body;
+    if (!bur_id) return res.status(400).json({ error: 'bur_id required' });
 
-  // Insert checkin
-  const result = await pool.query(
-    'INSERT INTO checkins (bur_id, employee_id, rfid_tag, status) VALUES ($1, $2, $3, $4) RETURNING *',
-    [bur_id, req.employee.id, req.employee.rfid || 'unknown', 'kollad']
-  );
+    const result = await pool.query(
+      'INSERT INTO checkins (bur_id, employee_id, rfid_tag, status) VALUES ($1, $2, $3, $4) RETURNING *',
+      [bur_id, req.employee.id, req.employee.rfid || 'unknown', 'kollad']
+    );
 
-  // Update bur status logic based on time
-  const bur = await pool.query('SELECT * FROM burar WHERE id = $1', [bur_id]);
-  if (bur.rowCount > 0) {
-    // Compute new color based on last checkin time
+    // Reset bur to green after checkin
     await pool.query('UPDATE burar SET color_status = $1 WHERE id = $2', ['gron', bur_id]);
-  }
 
-  res.json({ checkin: result.rows[0], bur_id, status: 'kollad' });
+    res.json({ checkin: result.rows[0], bur_id, status: 'kollad' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// --- EMPLOYEES ---
+// --- EMPLOYEES / RFID ---
 app.get('/employees', auth, async (req, res) => {
-  const result = await pool.query('SELECT id, name, rfid_tag FROM employees ORDER BY name');
-  res.json(result.rows);
+  try {
+    const result = await pool.query('SELECT id, name, rfid_tag FROM employees ORDER BY name');
+    res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/employees', auth, async (req, res) => {
-  const { name, rfid_tag } = req.body;
-  const result = await pool.query(
-    'INSERT INTO employees (name, rfid_tag) VALUES ($1, $2) RETURNING id, name, rfid_tag',
-    [name, rfid_tag || null]
-  );
-  res.status(201).json(result.rows[0]);
+  try {
+    const { name, rfid_tag } = req.body;
+    const result = await pool.query(
+      'INSERT INTO employees (name, rfid_tag) VALUES ($1, $2) RETURNING id, name, rfid_tag',
+      [name, rfid_tag || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/employees/:id/rfid', auth, async (req, res) => {
+  try {
+    const { tag_id } = req.body;
+    await pool.query('UPDATE rfid_tags SET employee_id = $1, tag_id = $2 WHERE id = $3',
+      [req.params.id, tag_id, req.params.id]);
+    const emp = await pool.query('SELECT * FROM employees WHERE id = $1', [req.params.id]);
+    res.json(emp.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/employees/:id/rfid', auth, async (req, res) => {
+  await pool.query('UPDATE rfid_tags SET employee_id = NULL WHERE id = $1', [req.params.id]);
+  res.json({ success: true });
 });
 
 // --- STATISTICS ---
 app.get('/stats/bur/:id', auth, async (req, res) => {
-  const result = await pool.query(
-    `SELECT
-      b.name,
-      COUNT(c.id) as total_checks,
-      COUNT(CASE WHEN c.checked_at > NOW() - INTERVAL '7 days' THEN 1 END) as checks_this_week,
-      COUNT(CASE WHEN c.checked_at > NOW() - INTERVAL '30 days' THEN 1 END) as checks_this_month,
-      MAX(c.checked_at) as last_check
-    FROM burar b
-    LEFT JOIN checkins c ON c.bur_id = b.id
-    WHERE b.id = $1
-    GROUP BY b.id, b.name`,
-    [req.params.id]
-  );
-  res.json(result.rows[0] || { name: null });
+  try {
+    const result = await pool.query(`
+      SELECT
+        b.name,
+        COUNT(c.id) as total_checks,
+        COUNT(CASE WHEN c.checked_at > NOW() - INTERVAL '7 days' THEN 1 END) as checks_this_week,
+        COUNT(CASE WHEN c.checked_at > NOW() - INTERVAL '30 days' THEN 1 END) as checks_this_month,
+        MAX(c.checked_at) as last_check
+      FROM burar b
+      LEFT JOIN checkins c ON c.bur_id = b.id
+      WHERE b.id = $1
+      GROUP BY b.id, b.name`,
+      [req.params.id]
+    );
+    res.json(result.rows[0] || { name: null });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
