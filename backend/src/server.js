@@ -125,7 +125,7 @@ app.post('/api/burar', auth, async (req, res) => {
 });
 
 // PUT update bur (name, position, status color)
-app.put('/burar/:id', auth, async (req, res) => {
+app.put('/api/burar/:id', auth, async (req, res) => {
   try {
     const { name, x, y, color_status } = req.body;
     const result = await pool.query(

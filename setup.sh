@@ -144,16 +144,57 @@ full_setup() {
 
 self_update() {
   INFO "Uppdaterar systemet från GitHub..."
-  if ! git pull; then
-    ERR "Git pull misslyckades"
+
+  # Kontrollera om det finns ändringar i arbetskatalogen
+  if ! git diff --quiet; then
+    ERR "Det finns lokala ändringar. Avsluta alla processer och försök igen."
+    echo "Följande filer har ändringar:"
+    git diff --name-only
     return 1
   fi
-  LOG "Källa uppdaterad"
-  build_start
-  init_db
-  fix_bugs
-  health_check
-  LOG "SYSTEMET UPPDATERAT! Öppna http://192.168.1.250"
+
+  # Kör fetch först för att hämta uppdateringar utan att ändra lokala förändringar
+  if ! git fetch origin; then
+    ERR "Misslyckades att hämta uppdateringar från origin"
+    return 1
+  fi
+
+  # Hämta från origin/main (eller det aktuella fältet)
+  local branch=$(git rev-parse --abbrev-ref HEAD)
+  if [ "$branch" = "HEAD" ]; then
+    branch="main"
+  fi
+
+  # Kontrollera om det finns nya uppdateringar
+  if git rev-parse "$branch" >/dev/null 2>&1; then
+    local remote_ref="origin/$branch"
+    local local_commit=$(git rev-parse "$branch")
+    local remote_commit=$(git rev-parse "$remote_ref" 2>/dev/null || echo "NOT_FOUND")
+
+    if [ "$remote_commit" = "NOT_FOUND" ]; then
+      WARN "Kan inte hitta remote '$remote_ref'. Försöker använda HEAD."
+      remote_commit=$(git rev-parse "origin/HEAD" 2>/dev/null || echo "$local_commit")
+    fi
+
+    if [ "$local_commit" != "$remote_commit" ]; then
+      LOG "Hittar ny uppdatering ($local_commit → $remote_commit)"
+      if ! git reset --hard "$remote_ref"; then
+        ERR "Misslyckades att tillämpa uppdateringar"
+        return 1
+      fi
+      LOG "Uppdateringar tillämpade"
+      INFO "Kör om setup..."
+      build_start
+      init_db
+      fix_bugs
+      health_check
+      LOG "SYSTEMET UPPDATERAT! Öppna http://192.168.1.250"
+    else
+      LOG "Systemet är redan uppdaterat (local = remote)"
+    fi
+  else
+    WARN "Aktuell gren '$branch' inte hittad lokalt"
+  fi
 }
 
 # --- Main ---
