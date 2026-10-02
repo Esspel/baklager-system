@@ -15,21 +15,6 @@ ERR() { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
 echo "===== Baklager-system Auto-Setup ====="
 
-# 0. Fix DNS (använd Cloudflare om localhost DNS misslyckas)
-INFO "Kontrollerar DNS..."
-if ! ping -c 1 -W 2 google.com &>/dev/null; then
-    INFO "DNS fungerar inte — sätter 8.8.8.8 som nameserver..."
-    echo "nameserver 8.8.8.8" > /etc/resolv.conf
-    echo "nameserver 1.1.1.1" >> /etc/resolv.conf
-fi
-
-# Kontrollera att docker.io är nåbart
-if ! ping -c 1 -W 2 docker.io &>/dev/null; then
-    INFO "docker.io ej nåbart via DNS — försöker DNS-fix igen..."
-    echo "nameserver 8.8.8.8" > /etc/resolv.conf
-    echo "nameserver 1.1.1.1" >> /etc/resolv.conf
-fi
-
 # 1. Uppdatera paket och installera beroenden (root kör direkt, ingen sudo behövs)
 INFO "Uppdaterar paketlista..."
 apt-get update -qq
