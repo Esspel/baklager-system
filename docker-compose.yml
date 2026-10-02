@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  # PostgreSQL-databas
+  db:
+    image: postgres:16-alpine
+    container_name: baklager-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-baklager}
+      POSTGRES_USER: ${DB_USER:-baklager}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - baklager_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Backend API (Node.js/Express)
+  backend:
+    build: ./backend
+    container_name: baklager-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-baklager}
+      DB_USER: ${DB_USER:-baklager}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      JWT_SECRET: ${JWT_SECRET:-changeme}
+    volumes:
+      - baklager_uploads:/app/uploads
+
+  # Frontend (Nginx med statisk HTML/CSS/JS)
+  frontend:
+    build: ./frontend
+    container_name: baklager-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:3000
+    ports:
+      - "80:80"
+
+volumes:
+  baklager_db:
+  baklager_uploads:

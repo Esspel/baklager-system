@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baklager-system</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=CoopSans:wght@400;500;600;700&family=CoopMarker:wght@400;700&display=swap" rel="stylesheet">
+  <script defer src="/js/app.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="logo">
+        <svg viewBox="0 0 100 30" width="100" height="30" fill="none">
+          <rect width="100" height="30" fill="var(--coop-gron)"/>
+          <text x="50" y="18" text-anchor="middle" fill="white" font-family="CoopMarker, sans-serif" font-size="14" font-weight="bold">BAKLAGER</text>
+        </svg>
+      </div>
+      <nav class="nav">
+        <button id="loginBtn" class="btn btn-primary">Logga in med RFID</button>
+      </nav>
+      <div class="user-info" id="userInfo" style="display:none;">
+        <span>Välkommen <strong id="userName"></strong></span>
+        <button class="btn btn-secondary" onclick="window.location.href='logout'">Logga ut</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="dashboard">
+        <div class="dashboard-grid">
+          <div class="panel panel-stats">
+            <h2>Total antal rullburar</h2>
+            <div class="stat-value" id="totalBurar">Laddar...</div>
+          </div>
+          <div class="panel panel-stats">
+            <h2>Kollade idag</h2>
+            <div class="stat-value" id="kolladeIdag">Laddar...</div>
+          </div>
+          <div class="panel panel-stats">
+            <h2>Nyligen kollade</h2>
+            <div class="stat-value" id="nyligenKollade">Laddar...</div>
+          </div>
+        </div>
+
+        <div class="panel panel-karta" style="margin-top:24px;">
+          <h2>Lagerkarta</h2>
+          <div id="karta" class="karta"></div>
+          <button id="redigeringsLägeBtn" class="btn btn-sm" style="margin-top:8px;display:none;">Släpp på redigeringsläge</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal för skapa/redigera bur -->
+  <div id="burModal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <h3 id="modalTitle">Ny rullbur</h3>
+      <input type="text" id="burNamn" placeholder="Namn (t.ex. 'Mejeribur')">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;">
+        <input type="number" id="burX" placeholder="X-position" min="0" step="1" value="10">
+        <input type="number" id="burY" placeholder="Y-position" min="0" step="1" value="10">
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:8px 0;">
+        <button data-color="gron" class="color-btn active" title="Grön (nyligen kollad)"></button>
+        <button data-color="gul" class="color-btn" title="Gul (2-3 dagar sedan)"></button>
+        <button data-color="röd" class="color-btn" title="Röd (länge sedan)"></button>
+      </div>
+      <div style="margin-top:12px;">
+        <button id="btnSparaBur" class="btn btn-primary">Spara</button>
+        <button id="btnAvbryt" class="btn btn-secondary">Avbryt</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // App is initialized via DOMContentLoaded in app.js
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.initApp) window.initApp();
+    });
+  </script>
+</body>
+</html>
