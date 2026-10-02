@@ -45,7 +45,6 @@ async function init() {
       id SERIAL PRIMARY KEY,
       bur_id INTEGER REFERENCES burar(id) ON DELETE CASCADE,
       employee_id INTEGER REFERENCES employees(id),
-      rfid_tag VARCHAR(50),
       status VARCHAR(20) DEFAULT 'kollad',
       checked_at TIMESTAMP DEFAULT NOW()
     )
@@ -54,7 +53,6 @@ async function init() {
   // Create indexes for performance
   await pool.query('CREATE INDEX IF NOT EXISTS idx_checkins_bur_id ON checkins(bur_id)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_checkins_checked_at ON checkins(checked_at)');
-  await pool.query('CREATE INDEX IF NOT EXISTS idx_rfid_tags_tag_id ON rfid_tags(tag_id)');
 
   // Seed default data if tables are empty
   const burCount = await pool.query('SELECT COUNT(*) FROM burar');
