@@ -15,10 +15,25 @@ ERR() { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
 echo "===== Baklager-system Auto-Setup ====="
 
-# 1. Uppdatera paket och installera beroenden
-INFO "Installera grundpaket (curl, apt-transport-https, ca-certificates, gnupg)..."
-sudo apt-get update -qq || true
-sudo apt-get install -y -qq curl ca-certificates gnupg software-properties-common apt-transport-https 2>/dev/null || true
+# 0. Fix DNS (använd Cloudflare om localhost DNS misslyckas)
+INFO "Kontrollerar DNS..."
+if ! ping -c 1 -W 2 google.com &>/dev/null; then
+    INFO "DNS fungerar inte — sätter 8.8.8.8 som nameserver..."
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf
+    echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+fi
+
+# Kontrollera att docker.io är nåbart
+if ! ping -c 1 -W 2 docker.io &>/dev/null; then
+    INFO "docker.io ej nåbart via DNS — försöker DNS-fix igen..."
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf
+    echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+fi
+
+# 1. Uppdatera paket och installera beroenden (root kör direkt, ingen sudo behövs)
+INFO "Uppdaterar paketlista..."
+apt-get update -qq
+apt-get install -y -qq curl ca-certificates gnupg 2>/dev/null || true
 
 # 2. Installera Docker (om det saknas)
 if command -v docker &>/dev/null; then
@@ -76,13 +91,18 @@ else
     else
         # Klona från GitHub om inget annat finns
         INFO "Klonar repo från GitHub..."
+        apt-get install -y -qq git 2>/dev/null || true
         git clone https://github.com/Esspel/baklager-system.git "$HOME/baklager-system" 2>/dev/null || \
-        curl -L -o /tmp/baklager-system.tar.gz "https://github.com/Esspel/baklager-system/archive/refs/heads/main.tar.gz" && \
-        tar -xzf /tmp/baklager-system.tar.gz -C /tmp/ && \
-        mv /tmp/baklager-system-main "$HOME/baklager-system"
+        { ERR "Kunde inte klona repo — kontrollera nätverk och DNS"; }
         cd "$HOME/baklager-system"
     fi
     LOG "Projekt laddat till $PWD"
+fi
+
+# 5. Ta bort 'version' från docker-compose.yml om det finns (gammal syntax)
+if grep -q '^version:' docker-compose.yml; then
+    INFO "Tar bort föråldrat 'version'-attribut från docker-compose.yml..."
+    sed -i '/^version:/d' docker-compose.yml
 fi
 
 # 5. Starta containrar
