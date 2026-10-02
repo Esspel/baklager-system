@@ -227,7 +227,6 @@ window.logout = function logout() {
   document.getElementById('burModal').style.display = 'none';
   loadBurar();
 };
-}
 
 // Toggle edit mode
 function toggleEditMode() {
@@ -237,8 +236,6 @@ function toggleEditMode() {
     selectedBurId = null;
     document.getElementById('burModal').style.display = 'none';
     document.querySelectorAll('.bur').forEach(b => b.classList.remove('selected'));
-  }
-}
   }
 }
 

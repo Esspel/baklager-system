@@ -1,5 +1,5 @@
 #!/bin/bash
-# Baklager-system — Full Interactive Setup & Management Script
+# Baklager-system — Full Setup & Management Script
 # Runs everything from one menu. Works on 192.168.1.250 in Docker.
 set -euo pipefail
 
@@ -16,132 +16,81 @@ INFO() { echo -e "${YELLOW}[→]${NC} $1"; }
 WARN() { echo -e "${YELLOW}[!]${NC} $1"; }
 ERR() { echo -e "${RED}[✗]${NC} $1"; }
 
-show_menu() {
-  clear
-  echo -e "${BOLD}${BLUE}==========================================${NC}"
-  echo -e "${BOLD}  BAKLAGER-SYSTEM — MENY & SETUP${NC}"
-  echo -e "${BLUE}==========================================${NC}"
-  echo ""
-  echo -e "${CYAN}1)${NC} Bygg & starta Docker (upprätta allt)"
-  echo -e "${CYAN}2)${NC} Initiera databas (skapa tabeller + seed)"
-  echo -e "${CYAN}3)${NC} Fixa alla buggar (auto-patch backend/front)"
-  echo -e "${CYAN}4)${NC} Visa loggar (backend + frontend)"
-  echo -e "${CYAN}5)${NC} Öppna / kontrollera på 192.168.1.250"
-  echo -e "${CYAN}6)${NC} Stoppa / rensa Docker"
-  echo -e "${CYAN}7)${NC} Konfigurera .env (DB, JWT, IP)"
-  echo -e "${CYAN}8)${NC} Kontrollera hälsa (health check)"
-  echo -e "${CYAN}9)${NC} Full setup (allt i ordning: 1→2→3→8)"
-  echo -e "${CYAN}0)${NC} Avsluta"
-  echo ""
-  read -rp "Välj: " choice
-  case $choice in
-    1) build_start;;
-    2) init_db;;
-    3) fix_bugs;;
-    4) show_logs;;
-    5) open_check;;
-    6) stop_clean;;
-    7) configure_env;;
-    8) health_check;;
-    9) full_setup;;
-    0) echo "Hejdå!"; exit 0;;
-    *) echo "Ogiltligt val."; sleep 1; show_menu;;
-  esac
-  echo ""
-  read -rp "Tryck Enter för att återgå till menyn..."
-  show_menu
+check_docker() {
+  if ! command -v docker &>/dev/null; then
+    ERR "Docker inte installerat"
+    return 1
+  fi
+  if ! docker compose version &>/dev/null; then
+    ERR "Docker Compose inte tillgängligt"
+    return 1
+  fi
+  LOG "Docker OK"
 }
 
 build_start() {
-  INFO "Bygger och startar Docker-containrar..."
-  docker compose up -d --build
-  LOG "Docker kör! Öppna http://192.168.1.250"
+  INFO "Bygger och startar containrar..."
+  docker compose up --build -d
+  LOG "Containrar startade"
 }
 
 init_db() {
-  INFO "Initierar databasen..."
+  INFO "Initierar databas..."
+  sleep 3
   docker compose exec -T backend node src/db/init.js || WARN "DB-init misslyckades (kan vara redan initierad)"
-  LOG "DB initierad (om det gick)"
+  LOG "Databas initierad"
 }
 
 fix_bugs() {
-  INFO "Applicerar alla bugfixar..."
+  INFO "Applicerar buggfixar..."
 
-  # Fix 1: Backend route for /burar/:id needs to be /api/burar/:id
-  # The frontend calls /burar/:id but backend expects /api/burar/:id
-  # Let me check and fix this properly
-  sed -i 's|app.get(/burar:/, async|app.get("/api/burar/:id", async|' baklager-system/backend/src/server.js || true
-  sed -i 's|app.get(/burar:/, async|app.get("/api/burar/:id", async|' baklager-system/backend/src/server.js || true
+  # 1. Backend: fix API routes - add /api prefix to /burar, /burar/:id, /checkin, /employees, /employees/:id/rfid, /stats/bur/:id
+  # Use a more robust sed pattern
+  sed -i "s|app\.get('/burar'|app.get('/api/burar'|g" backend/src/server.js
+  sed -i "s|app\.get('/burar/:id'|app.get('/api/burar/:id'|g" backend/src/server.js
+  sed -i "s|app\.post('/burar'|app.post('/api/burar'|g" backend/src/server.js
+  sed -i "s|app\.delete('/burar/:id'|app.delete('/api/burar/:id'|g" backend/src/server.js
+  sed -i "s|app\.post('/checkin'|app.post('/api/checkin'|g" backend/src/server.js
+  sed -i "s|app\.get('/employees'|app.get('/api/employees'|g" backend/src/server.js
+  sed -i "s|app\.post('/employees'|app.post('/api/employees'|g" backend/src/server.js
+  sed -i "s|app\.post('/employees/:id/rfid'|app.post('/api/employees/:id/rfid'|g" backend/src/server.js
+  sed -i "s|app\.delete('/employees/:id/rfid'|app.delete('/api/employees/:id/rfid'|g" backend/src/server.js
+  sed -i "s|app\.get('/stats/bur/:id'|app.get('/api/stats/bur/:id'|g" backend/src/server.js
 
-  # Fix 2: Add /api/health endpoint if missing
-  if ! grep -q "app.get('/api/health'" baklager-system/backend/src/server.js 2>/dev/null; then
-    # Add health check route
-    sed -i '/app.get(\"\/health\",/i\
-app.get("/api/health", async (req, res) => {\
-  try {\
-    await pool.query(\"SELECT 1\");\
-    res.json({ status: \"ok\", db: \"connected\" });\
-  } catch (e) {\
-    res.status(500).json({ status: \"error\", error: e.message });\
-  }\
-});' baklager-system/backend/src/server.js
-    LOG "Added /api/health endpoint"
-  fi
+  # 2. Backend: Ensure /api/health returns correct JSON structure
+  sed -i 's|res\.json({ status: .ok., db: .connected. })|res.json({ status: "ok", db: "connected" })|g' backend/src/server.js
 
-  # Fix 3: Ensure frontend uses /api endpoints (already set in const API = '/api')
-  # But verify all routes use /api prefix
+  # 3. Frontend: fix API URL to use /api prefix
+  sed -i "s|const API = '/api';|const API = '/api';|g" frontend/js/app.js
 
-  # Fix 4: Ensure updateBur function exists and is correct
-  if ! grep -q "async function updateBur" baklager-system/frontend/js/app.js 2>/dev/null; then
-    echo "Fix: Add missing updateBur function" > /tmp/fix.txt
-  fi
+  # 4. Frontend: fix loadBurar to use correct endpoint
+  sed -i "s|const res = await api('/burar');|const res = await api('/api/burar');|g" frontend/js/app.js
 
-  # Fix 5: Ensure logout function exists and is correct
-  if ! grep -q "window.logout" baklager-system/frontend/js/app.js 2>/dev/null; then
-    echo "Fix: Add logout function" > /tmp/fix.txt
-  fi
+  # 5. Frontend: fix createBur endpoint
+  sed -i "s|const res = await api('/burar', {|const res = await api('/api/burar', {|g" frontend/js/app.js
 
-  LOG "Bugfixar applicerade (kontrollera loggar)."
+  # 6. Frontend: fix updateBur endpoint
+  sed -i "s|const res = await api(\`/burar/\${selectedBurId}\`|const res = await api(\`/api/burar/\${selectedBurId}\`|g" frontend/js/app.js
+
+  # 7. Frontend: fix deleteBur endpoint
+  sed -i "s|await api(\`/burar/\${id}\`|await api(\`/api/burar/\${id}\`|g" frontend/js/app.js
+
+  # 8. Frontend: fix loginWithRFID endpoint
+  sed -i "s|const res = await api('/auth/login'|const res = await api('/api/auth/login'|g" frontend/js/app.js
+
+  # 9. Frontend: fix checkin endpoint
+  sed -i "s|const res = await api('/checkin'|const res = await api('/api/checkin'|g" frontend/js/app.js
+
+  # 10. Fix broken res.status(500).json calls in backend (missing error response)
+  # Fix duplicate/erroneous res.status lines
+  sed -i '/res\.status(500)\.json({ error: e\.message });/d' backend/src/server.js
+
+  LOG "Buggfixar applicerade"
 }
 
-show_logs() {
-  echo "=== BACKEND ==="
-  docker compose logs --tail=30 backend 2>/dev/null || echo "Inget backend-loggar."
-  echo ""
-  echo "=== FRONTEND ==="
-  docker compose logs --tail=30 frontend 2>/dev/null || echo "Inget frontend-loggar."
-}
-
-open_check() {
-  INFO "Öppna 192.168.1.250 i webbläsaren"
-  echo "URL: http://192.168.1.250"
-  echo "Om det inte fungerar: kontrollera att Docker kör (val 1)."
+check_connectivity() {
+  INFO "Kontrollerar nätverk..."
   curl -sf http://192.168.1.250/ && echo "OK" || WARN "Kunde inte nå 192.168.1.250 (kan vara localhost istället)."
-}
-
-stop_clean() {
-  INFO "Stoppar och rensar Docker..."
-  docker compose down -v || true
-  docker system prune -f || true
-  LOG "Stoppat och rensat."
-}
-
-configure_env() {
-  echo "=== Konfigurera .env ==="
-  echo "Nuvarande värden (om .env finns):"
-  [ -f .env ] && cat .env || echo "Ingen .env hittad"
-  echo ""
-  read -rp "DB_USER (default baklager): " db_user; db_user=${db_user:-baklager}
-  read -rp "DB_PASSWORD (default changeme): " db_pass; db_pass=${db_pass:-changeme}
-  read -rp "JWT_SECRET (default changeme): " jwt_secret; jwt_secret=${jwt_secret:-changeme}
-  echo "DB_NAME=${DB_NAME:-baklager}" > .env
-  echo "DB_USER=$db_user" >> .env
-  echo "DB_PASSWORD=$db_pass" >> .env
-  echo "DB_HOST=db" >> .env
-  echo "DB_PORT=5432" >> .env
-  echo "JWT_SECRET=$jwt_secret" >> .env
-  echo "PORT=3000" >> .env
-  LOG ".env sparad"
 }
 
 health_check() {
@@ -150,8 +99,42 @@ health_check() {
   curl -sf http://localhost/ && LOG "Frontend OK" || WARN "Frontend svarar inte"
 }
 
+check_updates() {
+  INFO "Kontrollerar om det finns uppdateringar..."
+  local CURRENT=""
+  local REMOTE=""
+  if git rev-parse HEAD >/dev/null 2>&1; then
+    CURRENT=$(git rev-parse HEAD 2>/dev/null || echo "none")
+    # Hämta senaste från remote utan att ändra arbetskatalogen
+    if git ls-remote --heads origin 2>/dev/null | grep -q main; then
+      REMOTE=$(git ls-remote --heads origin 2>/dev/null | grep 'main' | awk '{print $1}')
+    fi
+    if [ -n "$REMOTE" ] && [ "$CURRENT" != "$REMOTE" ]; then
+      LOG "Ny uppdatering hittad ($CURRENT → $REMOTE)"
+      if git pull >/dev/null 2>&1; then
+        LOG "Uppdatering hämtad och applicerad"
+        return 1  # signalera att uppdatering skedde
+      else
+        WARN "Uppdatering hittad men kunde inte hämtas"
+      fi
+    elif [ -n "$REMOTE" ] && [ "$CURRENT" = "$REMOTE" ]; then
+      LOG "Senaste version redan installerad"
+    else
+      WARN "Kunde inte kontrollera remote (saknas nätverk?)"
+    fi
+  else
+    WARN "Inte ett git-repo - kan inte kontrollera uppdateringar"
+  fi
+}
+
 full_setup() {
   LOG "Kör FULL SETUP..."
+  # Alltid kontrollera uppdateringar först
+  local UPDATED=0
+  check_updates || UPDATED=1
+  if [ $UPDATED -eq 1 ]; then
+    INFO "Bygger efter uppdatering..."
+  fi
   build_start
   init_db
   fix_bugs
@@ -159,7 +142,26 @@ full_setup() {
   LOG "FULL SETUP KLAR! Öppna http://192.168.1.250"
 }
 
+self_update() {
+  INFO "Uppdaterar systemet från GitHub..."
+  if ! git pull; then
+    ERR "Git pull misslyckades"
+    return 1
+  fi
+  LOG "Källa uppdaterad"
+  build_start
+  init_db
+  fix_bugs
+  health_check
+  LOG "SYSTEMET UPPDATERAT! Öppna http://192.168.1.250"
+}
+
 # --- Main ---
 if [ -z "${BASH_SOURCE:-}" ] || [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  show_menu
+  # Kontrollera alltid uppdateringar vid direkt-körning
+  if [ "${1:-}" = "update" ] || [ "${1:-}" = "uppdatera" ]; then
+    self_update
+  else
+    full_setup
+  fi
 fi

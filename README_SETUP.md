@@ -95,6 +95,16 @@ docker compose down
 
 ## Uppdatera senare
 
+### Enkelast (rekommenderat)
+
+Skriptet kan uppdatera sig självt från GitHub:
+
+```bash
+cd /opt/baklager-system && ./setup.sh update
+```
+
+Eller manuellt:
+
 ```bash
 cd /opt/baklager-system && git pull && docker compose up --build -d
 ```
