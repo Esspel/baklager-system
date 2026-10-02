@@ -50,8 +50,10 @@ async function init() {
     )
   `);
 
+  // Drop checkins table if it exists with wrong schema and recreate
+  await pool.query(`DROP TABLE IF EXISTS checkins`);
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS checkins (
+    CREATE TABLE checkins (
       id SERIAL PRIMARY KEY,
       bur_id INTEGER REFERENCES burar(id) ON DELETE CASCADE,
       employee_id INTEGER REFERENCES employees(id),
@@ -60,6 +62,8 @@ async function init() {
       checked_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_checkins_bur_id ON checkins(bur_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_checkins_checked_at ON checkins(checked_at)');
 
   // Create indexes
   await pool.query('CREATE INDEX IF NOT EXISTS idx_checkins_bur_id ON checkins(bur_id)');

@@ -72,7 +72,7 @@ app.post('/auth/login', async (req, res) => {
 // GET all wheelbarrows (public-ish data for map)
 app.get('/burar', async (req, res) => {
   const result = await pool.query(`
-    SELECT b.*, c.tag_id as last_rfid_tag, c.employee_id,
+    SELECT b.*, c.employee_id,
            c.checked_at, c.status,
            c.id as checkin_id,
            e.name as checked_by_name
