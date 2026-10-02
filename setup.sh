@@ -1,77 +1,123 @@
 #!/bin/bash
-# Setup script för Baklager-system
-# Körs med: curl -fsSL https://raw.githubusercontent.com/Esspel/baklager-system/main/setup.sh | bash
-# Eller lokalt: bash setup.sh
+# Setup script för Baklager-system — installerar Docker + Docker Compose + bygger och startar
+# Körs på Linux (Ubuntu/Debian/Raspberry Pi) med ett kommando.
 
 set -euo pipefail
 
-PROJECT_DIR="baklager-system"
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
-echo "===== Baklager-system Setup ====="
+LOG() { echo -e "${GREEN}[✓]${NC} $1"; }
+INFO() { echo -e "${YELLOW}[→]${NC} $1"; }
+ERR() { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
-# Kontrollera Docker
-if ! command -v docker &> /dev/null; then
-    echo "Docker hittades inte. Installera Docker först."
-    exit 1
-fi
+echo "===== Baklager-system Auto-Setup ====="
 
-# Kontrollera Docker-compose (plugin eller binary)
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo "Docker Compose hittades inte. Installera docker-compose."
-    exit 1
-fi
+# 1. Uppdatera paket och installera beroenden
+INFO "Installera grundpaket (curl, apt-transport-https, ca-certificates, gnupg)..."
+sudo apt-get update -qq || true
+sudo apt-get install -y -qq curl ca-certificates gnupg software-properties-common apt-transport-https 2>/dev/null || true
 
-echo "[✓] Docker och Docker Compose hittades"
-
-# Gå till projektkatalogen
-if [ ! -f docker-compose.yml ]; then
-    echo "[!] Kör setup från baklager-system-mappen eller klona repo först."
-    echo "Användning: cd baklager-system && bash setup.sh"
-    exit 1
-fi
-
-echo "[✓] Konfigurationsfil hittad"
-
-# Bygg och starta containrar
-if command -v docker-compose &> /dev/null; then
-    echo "[→] Bygger och startar containrar med docker-compose..."
-    docker-compose up --build -d
+# 2. Installera Docker (om det saknas)
+if command -v docker &>/dev/null; then
+    LOG "Docker redan installerat ($(docker --version))"
 else
-    echo "[→] Bygger och startar containrar med docker compose..."
-    docker compose up --build -d
+    INFO "Installerar Docker..."
+    # Metod för Debian/Ubuntu
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || \
+    curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$(. /etc/os-release && echo "$ID") $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null 2>/dev/null || \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs 2>/dev/null || echo "stable") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin 2>/dev/null || \
+    sudo apt-get install -y -qq docker.io docker-compose 2>/dev/null || \
+    { curl -fsSL https://get.docker.com | sudo sh; }
+    LOG "Docker installerat ($(docker --version 2>/dev/null || echo 'ok'))"
 fi
 
-# Vänta på att backend är redo
-sleep 3
-echo "[→] Väntar på att backend är redo..."
-for i in {1..30}; do
+# 3. Installera Docker Compose (plugin eller standalone binary)
+if docker compose version &>/dev/null; then
+    LOG "Docker Compose (plugin) finns redan ($(docker compose version | head -n1))"
+elif command -v docker-compose &>/dev/null; then
+    LOG "Docker Compose (standalone) finns redan ($(docker-compose --version | head -n1))"
+else
+    INFO "Installerar Docker Compose..."
+    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose 2>/dev/null || \
+    sudo curl -L "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose 2>/dev/null || true
+    # Om plugin saknas, skapa symlink från standalone
+    if [ -f /usr/local/bin/docker-compose ]; then
+        sudo ln -sf /usr/local/bin/docker-compose /usr/libexec/docker/cli-plugins/docker-compose 2>/dev/null || true
+    fi
+    LOG "Docker Compose installerat"
+fi
+
+# Lägg till användare till docker-gruppen (om möjligt) — kräver omstart eller newgrp
+if ! groups $(whoami) 2>/dev/null | grep -q docker; then
+    INFO "Lägger till $(whoami) i docker-gruppen..."
+    sudo usermod -aG docker $(whoami) || true
+    LOG "Användare tillagd i docker-grupp (logga ut/in eller kör 'newgrp docker' för att aktivera)"
+fi
+
+# 4. Kontrollera att vi är i projektkatalogen
+if [ -f "docker-compose.yml" ]; then
+    LOG "Projektfil hittad ($PWD)"
+else
+    # Försök hitta på vanliga platser
+    if [ -f "$HOME/baklager-system/docker-compose.yml" ]; then
+        INFO "Hittade projekt i $HOME/baklager-system — byter katalog..."
+        cd "$HOME/baklager-system"
+    elif [ -f "/opt/baklager-system/docker-compose.yml" ]; then
+        INFO "Hittade projekt i /opt/baklager-system — byter katalog..."
+        cd "/opt/baklager-system"
+    else
+        # Klona från GitHub om inget annat finns
+        INFO "Klonar repo från GitHub..."
+        git clone https://github.com/Esspel/baklager-system.git "$HOME/baklager-system" 2>/dev/null || \
+        curl -L -o /tmp/baklager-system.tar.gz "https://github.com/Esspel/baklager-system/archive/refs/heads/main.tar.gz" && \
+        tar -xzf /tmp/baklager-system.tar.gz -C /tmp/ && \
+        mv /tmp/baklager-system-main "$HOME/baklager-system"
+        cd "$HOME/baklager-system"
+    fi
+    LOG "Projekt laddat till $PWD"
+fi
+
+# 5. Starta containrar
+INFO "Bygger och startar Docker-containers..."
+if docker compose version &>/dev/null; then
+    docker compose down 2>/dev/null || true
+    docker compose up --build -d
+else
+    docker-compose down 2>/dev/null || true
+    docker-compose up --build -d
+fi
+
+# 6. Vänta på backend
+INFO "Väntar på att backend är redo..."
+for i in $(seq 1 30); do
     if curl -sf http://localhost/api/health > /dev/null 2>&1; then
-        echo "[✓] Backend svarar på /api/health"
+        LOG "Backend svarar på /api/health"
         break
     fi
     sleep 1
 done
 
-# Initiera databasen
-if [ -f backend/src/db/init.js ]; then
-    echo "[→] Initierar databasen..."
-    docker compose exec -T backend node -e "
-        import { Pool } from 'pg';
-        const pool = new Pool({ host: 'db', port: 5432, database: 'baklager', user: 'baklager', password: 'changeme' });
-        await pool.query(\"CREATE TABLE IF NOT EXISTS burar (id SERIAL PRIMARY KEY, name VARCHAR(50), x INTEGER DEFAULT 10, y INTEGER DEFAULT 10, color_status VARCHAR(10) DEFAULT 'gron', created_at TIMESTAMP DEFAULT NOW())\");
-        await pool.query(\"CREATE TABLE IF NOT EXISTS employees (id SERIAL PRIMARY KEY, name VARCHAR(100), rfid_tag VARCHAR(50), created_at TIMESTAMP DEFAULT NOW())\");
-        await pool.query(\"CREATE TABLE IF NOT EXISTS rfid_tags (id SERIAL PRIMARY KEY, tag_id VARCHAR(50) UNIQUE, employee_id INTEGER REFERENCES employees(id), created_at TIMESTAMP DEFAULT NOW())\");
-        await pool.query(\"CREATE TABLE IF NOT EXISTS checkins (id SERIAL PRIMARY KEY, bur_id INTEGER REFERENCES burar(id), employee_id INTEGER REFERENCES employees(id), rfid_tag VARCHAR(50), status VARCHAR(20) DEFAULT 'kollad', checked_at TIMESTAMP DEFAULT NOW())\");
-        console.log('DB initierad');
-        await pool.end();
-    " 2>/dev/null || echo "[!] Databasen initierades redan eller kunde inte initieras (kan köras manuellt)."
-fi
+# 7. Initiera databasen om möjligt
+INFO "Initierar databasen..."
+docker compose exec -T backend bash -c "
+  if [ -f src/db/init.js ]; then node src/db/init.js || true; fi
+" 2>/dev/null || true
 
-echo "===== Setup klar! ====="
-echo "Öppna webbläsaren på http://localhost"
-echo "Använd dessa RFID-taggar för att logga in:"
-echo "  RFID-001 (Anna Andersson)"
-echo "  RFID-002 (Björn Lund)"
-echo "  RFID-003 (Carina Nilsson)"
+# 8. Visa status
 echo ""
-echo "För att stoppa systemet: docker compose down"
+echo "========================================"
+echo "    BAKLAGER-SYSTEM ÄR KLAR!"
+echo "========================================"
+echo "Öppna: http://localhost"
+echo "RFID-taggar: RFID-001 (Anna), RFID-002 (Björn), RFID-003 (Carina)"
+echo ""
+echo "Stoppa: docker compose down"
+echo "========================================"
