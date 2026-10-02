@@ -127,7 +127,7 @@ done
 
 # 7. Initiera databasen om möjligt
 INFO "Initierar databasen..."
-docker compose exec -T backend bash -c "
+docker compose exec -T backend sh -c "
   if [ -f src/db/init.js ]; then node src/db/init.js || true; fi
 " 2>/dev/null || true
 
