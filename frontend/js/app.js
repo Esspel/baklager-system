@@ -24,7 +24,7 @@ async function api(endpoint, options = {}) {
 
   // Bygg full URL: om BACKEND_URL redan innehåller http://..., använd som är
   // annars lägg till /api i början av endpoint
-  const url = BACKEND_URL.startsWith('http') ? BACKEND_URL + endpoint : BACKEND_URL + '/api' + endpoint;
+  const url = BACKEND_URL.startsWith('http') ? BACKEND_URL + endpoint : BACKEND_URL + endpoint;
 
   console.log('API call to:', url, 'options:', options);
   const res = await fetch(url, { ...options, headers });
