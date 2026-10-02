@@ -6,6 +6,12 @@ let selectedBurId = null;
 let currentEmployee = null;
 const API = '/api';
 
+// Check if user has admin role
+function hasAdminRole() {
+  const role = localStorage.getItem('role');
+  return role === 'admin';
+}
+
 // Simple wrapper for fetch with error handling
 async function api(endpoint, options = {}) {
   const token = localStorage.getItem('token');
@@ -51,7 +57,7 @@ function renderBurar() {
       } else if (hours < 72) {
         statusColor = 'gul';
       } else {
-        statusColor = 'rod';
+        statusColor = 'röd';
       }
     }
     div.dataset.status = statusColor;
@@ -271,9 +277,9 @@ async function loadBurar() {
 // --- EMPLOYEE MANAGEMENT ---
 async function loadEmployees() {
   try {
-    employees = await api('/api/employees');
+    // Use admin endpoint for user management
+    employees = await api('/api/admin/employees');
     renderEmployeeList();
-    updateLoginSelect();
   } catch (e) {
     console.error('Failed to load employees:', e);
   }
@@ -390,11 +396,22 @@ async function loginWithEmployee() {
     const data = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ employee_id: employeeId }) });
     localStorage.setItem('token', data.token);
     currentEmployee = data.employee;
+    localStorage.setItem('role', currentEmployee.role || 'user');
+
     document.getElementById('userInfo').style.display = 'flex';
     document.getElementById('userName').textContent = currentEmployee.name;
     document.getElementById('loginSection').style.display = 'none';
-    document.getElementById('redigeringsLägeBtn').style.display = 'inline-block';
     document.getElementById('usersBtn').style.display = 'inline-block';
+
+    // Show admin elements only for admins
+    if (hasAdminRole()) {
+      document.getElementById('redigeringsLägeBtn').style.display = 'inline-block';
+      document.body.classList.add('admin-visible');
+    } else {
+      document.getElementById('redigeringsLägeBtn').style.display = 'none';
+      document.body.classList.remove('admin-visible');
+    }
+
     await loadBurar();
     await loadEmployees();
   } catch (e) {
@@ -418,6 +435,10 @@ window.logout = function logout() {
 
 // Toggle edit mode
 function toggleEditMode() {
+  if (!hasAdminRole()) {
+    alert('Endast administratörer kan redigera lagerkartan.');
+    return;
+  }
   editingMode = !editingMode;
   document.getElementById('redigeringsLägeBtn').textContent = editingMode ? 'Avsluta redigering' : 'Redigera läge';
   if (!editingMode) {
@@ -475,6 +496,18 @@ function initApp() {
     loadEmployees();
   });
   document.getElementById('btnNewEmployee').addEventListener('click', () => openEmployeeModal());
+  // Warehouse map toggle
+  document.getElementById('toggleWarehouseMap').addEventListener('change', (e) => {
+    const karta = document.getElementById('karta');
+    if (e.target.checked) {
+      karta.style.userSelect = 'none';
+      karta.style.cursor = 'grab';
+      alert('Lagerkartan är låsad för redigering - endast admin kan ändra positioner');
+    } else {
+      karta.style.userSelect = 'auto';
+      karta.style.cursor = 'grab';
+    }
+  });
   loadBurar();
 }
 

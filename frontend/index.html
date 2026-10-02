@@ -17,13 +17,21 @@
         </svg>
       </div>
       <nav class="nav">
-        <div id="loginSection" style="display:flex;gap:8px;align-items:center;">
+        <div id="loginSection" class="admin-only" style="display:flex;gap:8px;align-items:center;">
           <button id="loginBtn" class="btn btn-primary">Logga in</button>
         </div>
-        <div id="userInfo" style="display:none;align-items:center;gap:8px;">
+        <div id="userInfo" class="admin-only" style="display:none;align-items:center;gap:8px;">
           <span>Välkommen <strong id="userName"></strong></span>
-          <button id="usersBtn" class="btn btn-secondary" style="display:none;">Användare</button>
+          <button id="usersBtn" class="btn btn-sm" style="display:none;">Användare</button>
+          <button id="redigeringsLägeBtn" class="btn btn-sm" style="margin-top:8px;display:none;">Släpp på redigeringsläge</button>
           <button class="btn btn-secondary" onclick="window.logout()">Logga ut</button>
+          <div id="warehouseMapToggle" class="warehouse-map-admin" style="display:none;margin-left:12px;">
+            <label class="switch">
+              <input type="checkbox" id="toggleWarehouseMap" title="Låsa upp lagerkartan för redigering">
+              <span class="slider"></span>
+            </label>
+            <span title="Lagerkarta (endast admin)">🗺️</span>
+          </div>
         </div>
       </nav>
 

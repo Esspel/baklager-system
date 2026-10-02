@@ -53,7 +53,12 @@ app.post('/api/auth/login', async (req, res) => {
   const { employee_id } = req.body;
   if (!employee_id) return res.status(400).json({ error: 'Employee ID required' });
 
-  const result = await pool.query('SELECT id, name FROM employees WHERE id = $1', [employee_id]);
+  const result = await pool.query(`
+    SELECT e.id, e.name, r.name as role
+    FROM employees e
+    JOIN roles r ON e.role_id = r.id
+    WHERE e.id = $1
+  `, [employee_id]);
 
   if (result.rows.length === 0) {
     return res.status(401).json({ error: 'Invalid employee ID' });
@@ -61,12 +66,29 @@ app.post('/api/auth/login', async (req, res) => {
 
   const employee = result.rows[0];
   const token = jwt.sign(
-    { id: employee.id, name: employee.name },
+    { id: employee.id, name: employee.name, role: employee.role },
     JWT_SECRET,
     { expiresIn: '8h' }
   );
 
-  res.json({ token, employee: { id: employee.id, name: employee.name } });
+  res.json({ token, employee: { id: employee.id, name: employee.name, role: employee.role } });
+});
+
+// --- ADMIN ---
+// Get all employees (admin only)
+app.get('/api/admin/employees', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT e.id, e.name, r.name as role
+      FROM employees e
+      JOIN roles r ON e.role_id = r.id
+      ORDER BY e.name
+    `);
+    res.json(result.rows);
+  } catch (e) {
+    console.error('DB Error in /api/admin/employees:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // --- RULLBURAR ---
@@ -171,11 +193,13 @@ app.post('/api/checkin', auth, async (req, res) => {
 });
 
 // --- EMPLOYEES (User Management) ---
+// GET all employees (admin only)
 app.get('/api/employees', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, created_at FROM employees ORDER BY name');
+    const result = await pool.query('SELECT id, name FROM employees ORDER BY name');
     res.json(result.rows);
   } catch (e) {
+    console.error('DB Error in /api/employees:', e.message);
     res.status(500).json({ error: e.message });
   }
 });

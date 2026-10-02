@@ -21,6 +21,11 @@ async function init() {
 
   // Create tables if not exist
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS roles (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(50) UNIQUE NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS burar (
       id SERIAL PRIMARY KEY,
       name VARCHAR(50) NOT NULL,
@@ -29,26 +34,22 @@ async function init() {
       color_status VARCHAR(10) DEFAULT 'gron',
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
-    )
-  `);
+    );
 
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS employees (
       id SERIAL PRIMARY KEY,
       name VARCHAR(100) NOT NULL,
+      role_id INTEGER REFERENCES roles(id) DEFAULT 2,
       created_at TIMESTAMP DEFAULT NOW()
-    )
-  `);
+    );
 
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS checkins (
       id SERIAL PRIMARY KEY,
       bur_id INTEGER REFERENCES burar(id) ON DELETE CASCADE,
       employee_id INTEGER REFERENCES employees(id),
       status VARCHAR(20) DEFAULT 'kollad',
       checked_at TIMESTAMP DEFAULT NOW()
-    )
-  `);
+    );
 
   // Create indexes for performance
   await pool.query('CREATE INDEX IF NOT EXISTS idx_checkins_bur_id ON checkins(bur_id)');
@@ -76,6 +77,17 @@ async function init() {
         ('Anna Andersson'),
         ('Björn Lund'),
         ('Carina Nilsson')`
+    );
+  }
+
+  // Seed default roles if not exist
+  const roleCount = await pool.query('SELECT COUNT(*) FROM roles');
+  if (parseInt(roleCount.rows[0].count) === 0) {
+    console.log('Seeding roles...');
+    await pool.query(
+      `INSERT INTO roles (name) VALUES
+        ('admin'),
+        ('user')`
     );
   }
 

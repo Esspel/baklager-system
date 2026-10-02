@@ -200,7 +200,6 @@ body {
   width: 100%;
   height: 500px;
   background: linear-gradient(135deg, var(--coop-gray-100) 0%, var(--coop-gray-200) 100%);
-  border-radius: 12px;
   position: relative;
   overflow: hidden;
   border: 2px dashed var(--coop-gray-400);
@@ -234,15 +233,15 @@ body {
 /* Rullbur */
 .bur {
   position: absolute;
-  width: 64px;
-  height: 64px;
-  border-radius: 12px;
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   font-family: 'CoopSans', sans-serif;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--coop-svart);
   cursor: grab;
@@ -251,7 +250,7 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   text-align: center;
   line-height: 1.2;
-  gap: 2px;
+  gap: 4px;
 }
 
 .bur:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
@@ -263,7 +262,7 @@ body {
 .bur[data-status="röd"] { background: var(--coop-red-500); color: var(--coop-vit); border: 2px solid var(--coop-red-700); }
 
 .bur-name {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -384,6 +383,73 @@ body {
   align-items: center;
   gap: 12px;
   color: var(--coop-vit);
+}
+
+/* Admin-only elements - hidden by default */
+.admin-only {
+  display: none !important;
+}
+
+.admin-visible .admin-only {
+  display: flex !important;
+}
+
+/* Warehouse map toggle switch */
+.warehouse-map-admin {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--coop-vit);
+  font-size: 14px;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--coop-gray-400);
+  transition: .3s;
+  border-radius: 20px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--coop-gron-400);
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px var(--coop-gron-400);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
 }
 
 /* Responsive */
