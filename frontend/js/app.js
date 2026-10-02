@@ -129,7 +129,6 @@ async function updateBur() {
   const y = parseInt(document.getElementById('burY').value) || 10;
   const colorBtn = document.querySelector('.color-btn.active');
   const color = colorBtn ? colorBtn.dataset.color : 'gron';
-
   try {
     await api('/burar/' + selectedBurId, { method: 'PUT', body: JSON.stringify({ name, x, y, color_status: color }) });
     await loadBurar();
@@ -216,7 +215,7 @@ async function loginWithRFID() {
   }
 }
 
-function logout() {
+window.logout = function logout() {
   localStorage.removeItem('token');
   currentEmployee = null;
   document.getElementById('userInfo').style.display = 'none';
@@ -227,6 +226,7 @@ function logout() {
   document.querySelectorAll('.bur').forEach(b => b.classList.remove('selected'));
   document.getElementById('burModal').style.display = 'none';
   loadBurar();
+};
 }
 
 // Toggle edit mode
@@ -236,6 +236,9 @@ function toggleEditMode() {
   if (!editingMode) {
     selectedBurId = null;
     document.getElementById('burModal').style.display = 'none';
+    document.querySelectorAll('.bur').forEach(b => b.classList.remove('selected'));
+  }
+}
   }
 }
 
@@ -257,3 +260,5 @@ window.initApp = initApp;
 window.createBur = createBur;
 window.updateBur = updateBur;
 window.deleteBur = deleteBur;
+window.loadBurar = loadBurar;
+window.toggleEditMode = toggleEditMode;

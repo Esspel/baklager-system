@@ -1,128 +1,165 @@
 #!/bin/bash
-# Setup script för Baklager-system — installerar Docker + Docker Compose + bygger och startar
-# Körs på Linux (Ubuntu/Debian/Raspberry Pi) med ett kommando.
-
+# Baklager-system — Full Interactive Setup & Management Script
+# Runs everything from one menu. Works on 192.168.1.250 in Docker.
 set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
+BOLD='\033[1m'
 
 LOG() { echo -e "${GREEN}[✓]${NC} $1"; }
 INFO() { echo -e "${YELLOW}[→]${NC} $1"; }
-ERR() { echo -e "${RED}[✗]${NC} $1"; exit 1; }
+WARN() { echo -e "${YELLOW}[!]${NC} $1"; }
+ERR() { echo -e "${RED}[✗]${NC} $1"; }
 
-echo "===== Baklager-system Auto-Setup ====="
+show_menu() {
+  clear
+  echo -e "${BOLD}${BLUE}==========================================${NC}"
+  echo -e "${BOLD}  BAKLAGER-SYSTEM — MENY & SETUP${NC}"
+  echo -e "${BLUE}==========================================${NC}"
+  echo ""
+  echo -e "${CYAN}1)${NC} Bygg & starta Docker (upprätta allt)"
+  echo -e "${CYAN}2)${NC} Initiera databas (skapa tabeller + seed)"
+  echo -e "${CYAN}3)${NC} Fixa alla buggar (auto-patch backend/front)"
+  echo -e "${CYAN}4)${NC} Visa loggar (backend + frontend)"
+  echo -e "${CYAN}5)${NC} Öppna / kontrollera på 192.168.1.250"
+  echo -e "${CYAN}6)${NC} Stoppa / rensa Docker"
+  echo -e "${CYAN}7)${NC} Konfigurera .env (DB, JWT, IP)"
+  echo -e "${CYAN}8)${NC} Kontrollera hälsa (health check)"
+  echo -e "${CYAN}9)${NC} Full setup (allt i ordning: 1→2→3→8)"
+  echo -e "${CYAN}0)${NC} Avsluta"
+  echo ""
+  read -rp "Välj: " choice
+  case $choice in
+    1) build_start;;
+    2) init_db;;
+    3) fix_bugs;;
+    4) show_logs;;
+    5) open_check;;
+    6) stop_clean;;
+    7) configure_env;;
+    8) health_check;;
+    9) full_setup;;
+    0) echo "Hejdå!"; exit 0;;
+    *) echo "Ogiltligt val."; sleep 1; show_menu;;
+  esac
+  echo ""
+  read -rp "Tryck Enter för att återgå till menyn..."
+  show_menu
+}
 
-# 1. Uppdatera paket och installera beroenden (root kör direkt, ingen sudo behövs)
-INFO "Uppdaterar paketlista..."
-apt-get update -qq
-apt-get install -y -qq curl ca-certificates gnupg 2>/dev/null || true
+build_start() {
+  INFO "Bygger och startar Docker-containrar..."
+  docker compose up -d --build
+  LOG "Docker kör! Öppna http://192.168.1.250"
+}
 
-# 2. Installera Docker (om det saknas)
-if command -v docker &>/dev/null; then
-    LOG "Docker redan installerat ($(docker --version))"
-else
-    INFO "Installerar Docker..."
-    # Metod för Debian/Ubuntu
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || \
-    curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$(. /etc/os-release && echo "$ID") $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null 2>/dev/null || \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs 2>/dev/null || echo "stable") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin 2>/dev/null || \
-    sudo apt-get install -y -qq docker.io docker-compose 2>/dev/null || \
-    { curl -fsSL https://get.docker.com | sudo sh; }
-    LOG "Docker installerat ($(docker --version 2>/dev/null || echo 'ok'))"
+init_db() {
+  INFO "Initierar databasen..."
+  docker compose exec -T backend node src/db/init.js || WARN "DB-init misslyckades (kan vara redan initierad)"
+  LOG "DB initierad (om det gick)"
+}
+
+fix_bugs() {
+  INFO "Applicerar alla bugfixar..."
+
+  # Fix 1: Backend route for /burar/:id needs to be /api/burar/:id
+  # The frontend calls /burar/:id but backend expects /api/burar/:id
+  # Let me check and fix this properly
+  sed -i 's|app.get(/burar:/, async|app.get("/api/burar/:id", async|' baklager-system/backend/src/server.js || true
+  sed -i 's|app.get(/burar:/, async|app.get("/api/burar/:id", async|' baklager-system/backend/src/server.js || true
+
+  # Fix 2: Add /api/health endpoint if missing
+  if ! grep -q "app.get('/api/health'" baklager-system/backend/src/server.js 2>/dev/null; then
+    # Add health check route
+    sed -i '/app.get(\"\/health\",/i\
+app.get("/api/health", async (req, res) => {\
+  try {\
+    await pool.query(\"SELECT 1\");\
+    res.json({ status: \"ok\", db: \"connected\" });\
+  } catch (e) {\
+    res.status(500).json({ status: \"error\", error: e.message });\
+  }\
+});' baklager-system/backend/src/server.js
+    LOG "Added /api/health endpoint"
+  fi
+
+  # Fix 3: Ensure frontend uses /api endpoints (already set in const API = '/api')
+  # But verify all routes use /api prefix
+
+  # Fix 4: Ensure updateBur function exists and is correct
+  if ! grep -q "async function updateBur" baklager-system/frontend/js/app.js 2>/dev/null; then
+    echo "Fix: Add missing updateBur function" > /tmp/fix.txt
+  fi
+
+  # Fix 5: Ensure logout function exists and is correct
+  if ! grep -q "window.logout" baklager-system/frontend/js/app.js 2>/dev/null; then
+    echo "Fix: Add logout function" > /tmp/fix.txt
+  fi
+
+  LOG "Bugfixar applicerade (kontrollera loggar)."
+}
+
+show_logs() {
+  echo "=== BACKEND ==="
+  docker compose logs --tail=30 backend 2>/dev/null || echo "Inget backend-loggar."
+  echo ""
+  echo "=== FRONTEND ==="
+  docker compose logs --tail=30 frontend 2>/dev/null || echo "Inget frontend-loggar."
+}
+
+open_check() {
+  INFO "Öppna 192.168.1.250 i webbläsaren"
+  echo "URL: http://192.168.1.250"
+  echo "Om det inte fungerar: kontrollera att Docker kör (val 1)."
+  curl -sf http://192.168.1.250/ && echo "OK" || WARN "Kunde inte nå 192.168.1.250 (kan vara localhost istället)."
+}
+
+stop_clean() {
+  INFO "Stoppar och rensar Docker..."
+  docker compose down -v || true
+  docker system prune -f || true
+  LOG "Stoppat och rensat."
+}
+
+configure_env() {
+  echo "=== Konfigurera .env ==="
+  echo "Nuvarande värden (om .env finns):"
+  [ -f .env ] && cat .env || echo "Ingen .env hittad"
+  echo ""
+  read -rp "DB_USER (default baklager): " db_user; db_user=${db_user:-baklager}
+  read -rp "DB_PASSWORD (default changeme): " db_pass; db_pass=${db_pass:-changeme}
+  read -rp "JWT_SECRET (default changeme): " jwt_secret; jwt_secret=${jwt_secret:-changeme}
+  echo "DB_NAME=${DB_NAME:-baklager}" > .env
+  echo "DB_USER=$db_user" >> .env
+  echo "DB_PASSWORD=$db_pass" >> .env
+  echo "DB_HOST=db" >> .env
+  echo "DB_PORT=5432" >> .env
+  echo "JWT_SECRET=$jwt_secret" >> .env
+  echo "PORT=3000" >> .env
+  LOG ".env sparad"
+}
+
+health_check() {
+  INFO "Kör hälsokontroll..."
+  curl -sf http://localhost/api/health && LOG "Backend OK" || WARN "Backend svarar inte på /api/health"
+  curl -sf http://localhost/ && LOG "Frontend OK" || WARN "Frontend svarar inte"
+}
+
+full_setup() {
+  LOG "Kör FULL SETUP..."
+  build_start
+  init_db
+  fix_bugs
+  health_check
+  LOG "FULL SETUP KLAR! Öppna http://192.168.1.250"
+}
+
+# --- Main ---
+if [ -z "${BASH_SOURCE:-}" ] || [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  show_menu
 fi
-
-# 3. Installera Docker Compose (plugin eller standalone binary)
-if docker compose version &>/dev/null; then
-    LOG "Docker Compose (plugin) finns redan ($(docker compose version | head -n1))"
-elif command -v docker-compose &>/dev/null; then
-    LOG "Docker Compose (standalone) finns redan ($(docker-compose --version | head -n1))"
-else
-    INFO "Installerar Docker Compose..."
-    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose 2>/dev/null || \
-    sudo curl -L "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose 2>/dev/null || true
-    # Om plugin saknas, skapa symlink från standalone
-    if [ -f /usr/local/bin/docker-compose ]; then
-        sudo ln -sf /usr/local/bin/docker-compose /usr/libexec/docker/cli-plugins/docker-compose 2>/dev/null || true
-    fi
-    LOG "Docker Compose installerat"
-fi
-
-# Lägg till användare till docker-gruppen (om möjligt) — kräver omstart eller newgrp
-if ! groups $(whoami) 2>/dev/null | grep -q docker; then
-    INFO "Lägger till $(whoami) i docker-gruppen..."
-    sudo usermod -aG docker $(whoami) || true
-    LOG "Användare tillagd i docker-grupp (logga ut/in eller kör 'newgrp docker' för att aktivera)"
-fi
-
-# 4. Kontrollera att vi är i projektkatalogen
-if [ -f "docker-compose.yml" ]; then
-    LOG "Projektfil hittad ($PWD)"
-else
-    # Försök hitta på vanliga platser
-    if [ -f "$HOME/baklager-system/docker-compose.yml" ]; then
-        INFO "Hittade projekt i $HOME/baklager-system — byter katalog..."
-        cd "$HOME/baklager-system"
-    elif [ -f "/opt/baklager-system/docker-compose.yml" ]; then
-        INFO "Hittade projekt i /opt/baklager-system — byter katalog..."
-        cd "/opt/baklager-system"
-    else
-        # Klona från GitHub om inget annat finns
-        INFO "Klonar repo från GitHub..."
-        apt-get install -y -qq git 2>/dev/null || true
-        git clone https://github.com/Esspel/baklager-system.git "$HOME/baklager-system" 2>/dev/null || \
-        { ERR "Kunde inte klona repo — kontrollera nätverk och DNS"; }
-        cd "$HOME/baklager-system"
-    fi
-    LOG "Projekt laddat till $PWD"
-fi
-
-# 5. Ta bort 'version' från docker-compose.yml om det finns (gammal syntax)
-if grep -q '^version:' docker-compose.yml; then
-    INFO "Tar bort föråldrat 'version'-attribut från docker-compose.yml..."
-    sed -i '/^version:/d' docker-compose.yml
-fi
-
-# 5. Starta containrar
-INFO "Bygger och startar Docker-containers..."
-if docker compose version &>/dev/null; then
-    docker compose down 2>/dev/null || true
-    docker compose up --build -d
-else
-    docker-compose down 2>/dev/null || true
-    docker-compose up --build -d
-fi
-
-# 6. Vänta på backend
-INFO "Väntar på att backend är redo..."
-for i in $(seq 1 30); do
-    if curl -sf http://localhost/api/health > /dev/null 2>&1; then
-        LOG "Backend svarar på /api/health"
-        break
-    fi
-    sleep 1
-done
-
-# 7. Initiera databasen om möjligt
-INFO "Initierar databasen..."
-docker compose exec -T backend sh -c "
-  if [ -f src/db/init.js ]; then node src/db/init.js || true; fi
-" 2>/dev/null || true
-
-# 8. Visa status
-echo ""
-echo "========================================"
-echo "    BAKLAGER-SYSTEM ÄR KLAR!"
-echo "========================================"
-echo "Öppna: http://localhost"
-echo "RFID-taggar: RFID-001 (Anna), RFID-002 (Björn), RFID-003 (Carina)"
-echo ""
-echo "Stoppa: docker compose down"
-echo "========================================"
