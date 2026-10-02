@@ -37,13 +37,18 @@ async function init() {
       updated_at TIMESTAMP DEFAULT NOW()
     )`);
 
+  // Create employees table (might already exist without role_id)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS employees (
       id SERIAL PRIMARY KEY,
       name VARCHAR(100) NOT NULL,
-      role_id INTEGER REFERENCES roles(id) DEFAULT 2,
       created_at TIMESTAMP DEFAULT NOW()
     )`);
+
+  // Add role_id column to existing employees table if missing
+  await pool.query(`
+    ALTER TABLE employees ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id) DEFAULT 2
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS checkins (
