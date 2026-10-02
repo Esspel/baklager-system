@@ -81,6 +81,32 @@
   --coop-yellow-900: #332806;
 }
 
+/* Custom @font-face för lokala Coop-fonts (installeras av Docker) */
+@font-face {
+  font-family: 'CoopSans';
+  src: local('CoopSans'), url('../fonts/CoopSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'CoopSans';
+  src: local('CoopSans-Bold'), url('../fonts/CoopSans-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'CoopMarker';
+  src: local('CoopMarker'), url('../fonts/CoopMarker-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'CoopMarker';
+  src: local('CoopMarker-Bold'), url('../fonts/CoopMarker-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+}
+
 /* Reset & Base */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
