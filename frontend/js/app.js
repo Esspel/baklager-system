@@ -3,15 +3,7 @@ let burar = [];
 let editingMode = false;
 let selectedBurId = null;
 let currentEmployee = null;
-
-// Vi proxyar från Nginx: /api/ -> backend:3000
-// Men ibland sker felet att backend svarar med HTML istället för JSON.
-// Låt oss skicka direkt till localhost:3000 om vi är i debug-läge,
-const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:3000'
-  : '/api';
-
-const API = BACKEND_URL; // hela bas-URL:en
+const API = '/api'; // If served from same origin; else adjust
 
 // Simple wrapper for fetch with error handling
 async function api(endpoint, options = {}) {
@@ -22,18 +14,12 @@ async function api(endpoint, options = {}) {
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  // Bygg full URL: om BACKEND_URL redan innehåller http://..., använd som är
-  // annars lägg till /api i början av endpoint
-  const url = BACKEND_URL.startsWith('http') ? BACKEND_URL + endpoint : BACKEND_URL + endpoint;
-
-  console.log('API call to:', url, 'options:', options);
-  const res = await fetch(url, { ...options, headers });
-  console.log('API response status:', res.status);
-
+  const res = await fetch(endpoint, { ...options, headers });
   if (!res.ok) {
-    // Om vi får HTML svar (t.ex. 404-fil hittades), skjut ut ett tydligt meddelande
-    const text = await res.text().catch(() => 'unknown error');
-    throw new Error(`HTTP ${res.status}: ${text.substring(0, 200)}`);
+    const errText = await res.text().catch(() => '');
+    let err;
+    try { err = await res.json(); } catch { err = { message: errText }; }
+    throw new Error(err.message || `HTTP ${res.status}`);
   }
   return res.json();
 }
@@ -48,59 +34,29 @@ function renderBurar() {
     div.className = 'bur';
     div.dataset.id = bur.id;
     div.dataset.status = bur.color_status;
-    div.style.left = `${bur.x}px`;
-    div.style.top = `${bur.y}px`;
-    div.title = `${bur.name}\nSenast kollad: ${new Date(bur.checked_at || 0).toLocaleString()}\nKollad av: ${bur.checked_by_name || 'okänd'}`;
+    div.style.left = bur.x + 'px';
+    div.style.top = bur.y + 'px';
+    div.title = bur.name;
 
-    div.textContent = bur.name;
-
-    // Enable drag in edit mode
-    if (editingMode) {
-      div.style.cursor = 'grab';
-      let isDragging = false;
-      let startX, startY, initialLeft, initialTop;
-
-      div.addEventListener('pointerdown', e => {
-        isDragging = true;
-        div.style.cursor = 'grabbing';
-        startX = e.clientX;
-        startY = e.clientY;
-        const rect = div.getBoundingClientRect();
-        initialLeft = rect.left;
-        initialTop = rect.top;
-        e.preventDefault();
-      });
-
-      document.addEventListener('pointermove', e => {
-        if (!isDragging) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        div.style.left = `${initialLeft + dx}px`;
-        div.style.top = `${initialTop + dy}px`;
-      });
-
-      document.addEventListener('pointerup', () => {
-        isDragging = false;
-        div.style.cursor = 'grab';
-        // Save new position
-        const rect = div.getBoundingClientRect();
-        const newX = Math.round(rect.left);
-        const newY = Math.round(rect.top);
-        updateBurPosition(div.dataset.id, newX, newY);
-      });
+    // Status färg
+    if (bur.checked_at) {
+      const hours = (Date.now() - new Date(bur.checked_at).getTime()) / 3600000;
+      if (hours < 24) {
+        div.dataset.status = 'gron';
+      } else if (hours < 72) {
+        div.dataset.status = 'gul';
+      } else {
+        div.dataset.status = 'röd';
+      }
     }
 
-    // Click to select / check-in
-    div.addEventListener('click', async () => {
+    div.textContent = bur.name.substring(0, 8);
+
+    div.addEventListener('click', () => {
       if (editingMode) {
         selectBur(div.dataset.id);
       } else {
-        // Check-in mode
-        if (!currentEmployee) {
-          alert('Du måste logga in först för att kunna kollas en bur');
-          return;
-        }
-        await checkinBur(div.dataset.id);
+        checkinBur(div.dataset.id);
       }
     });
 
@@ -110,7 +66,7 @@ function renderBurar() {
 
 // Select bur for editing
 async function selectBur(id) {
-  if (selectedBurId === id) {
+  if (id === selectedBurId) {
     selectedBurId = null;
     document.querySelectorAll('.bur').forEach(b => b.classList.remove('selected'));
     document.getElementById('burModal').style.display = 'none';
@@ -123,49 +79,26 @@ async function selectBur(id) {
   const bur = burar.find(b => b.id == id);
   if (!bur) return;
 
-  document.getElementById('burNamn').value = bur.name;
-  document.getElementById('burX').value = bur.x;
-  document.getElementById('burY').value = bur.y;
+  document.getElementById('burNamn').value = bur.name || '';
+  document.getElementById('burX').value = bur.x || 10;
+  document.getElementById('burY').value = bur.y || 10;
 
-  // Set active color button
+  const color = bur.color_status || 'gron';
   document.querySelectorAll('.color-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.color === bur.color_status);
+    btn.classList.toggle('active', btn.dataset.color === color);
   });
 
-  document.getElementById('modalTitle').textContent = `Redigera "${bur.name}"`;
+  document.getElementById('modalTitle').textContent = 'Redigera "' + (bur.name || '') + '"';
   document.getElementById('burModal').style.display = 'flex';
 }
 
-// Update bur (name, position)
-async function updateBur(id, updates) {
+// Update bur position
+async function updateBurPosition(id, newX, newY) {
   try {
-    await api(`/burar/${id}`, { method: 'PUT', body: JSON.stringify(updates) });
-    await loadBurar();
-    selectBur(id); // Refresh modal
-  } catch (e) {
-    alert('Fel vid uppdatering: ' + e.message);
-  }
-}
-
-// Update position only
-async function updateBurPosition(id, x, y) {
-  try {
-    await api(`/burar/${id}`, { method: 'PUT', body: JSON.stringify({ x, y }) });
+    await api('/burar/' + id, { method: 'PUT', body: JSON.stringify({ x: newX, y: newY }) });
     await loadBurar();
   } catch (e) {
-    alert('Kunde inte spara position: ' + e.message);
-  }
-}
-
-// Delete bur
-async function deleteBur(id) {
-  if (!confirm('Ta bort denna rullbur?')) return;
-  try {
-    await api(`/burar/${id}`, { method: 'DELETE' });
-    await loadBurar();
-    if (selectedBurId === id) selectBur(id); // Close modal
-  } catch (e) {
-    alert('Fel vid borttagning: ' + e.message);
+    console.error('Position update failed:', e.message);
   }
 }
 
@@ -182,8 +115,27 @@ async function createBur() {
     await api('/burar', { method: 'POST', body: JSON.stringify({ name, x, y, color_status: color }) });
     await loadBurar();
     document.getElementById('burModal').style.display = 'none';
+    selectedBurId = null;
   } catch (e) {
-    alert('Fel vid skapande: ' + e.message);
+    alert('Fel: ' + e.message);
+  }
+}
+
+// Update bur
+async function updateBur() {
+  if (!selectedBurId) return;
+  const name = document.getElementById('burNamn').value.trim();
+  const x = parseInt(document.getElementById('burX').value) || 10;
+  const y = parseInt(document.getElementById('burY').value) || 10;
+  const colorBtn = document.querySelector('.color-btn.active');
+  const color = colorBtn ? colorBtn.dataset.color : 'gron';
+
+  try {
+    await api('/burar/' + selectedBurId, { method: 'PUT', body: JSON.stringify({ name, x, y, color_status: color }) });
+    await loadBurar();
+    document.getElementById('burModal').style.display = 'none';
+  } catch (e) {
+    alert('Fel: ' + e.message);
   }
 }
 
@@ -191,21 +143,50 @@ async function createBur() {
 async function checkinBur(burId) {
   try {
     const result = await api('/checkin', { method: 'POST', body: JSON.stringify({ bur_id: burId }) });
-    // Update local bur data for immediate UI feedback
-    const bur = burar.find(b => b.id == burId);
-    if (bur) {
-      bur.checked_at = new Date().toISOString();
-      bur.checked_by_name = currentEmployee.name;
-      bur.color_status = 'gron'; // Reset to green after check-in
-    }
-    renderBurar();
+    await loadBurar();
     updateStats();
   } catch (e) {
     alert('Kunde inte registrera koll: ' + e.message);
   }
 }
 
-// Load all burar from backend
+// Delete bur
+async function deleteBur(id) {
+  if (!confirm('Ta bort denna rullbur?')) return;
+  try {
+    await api('/burar/' + id, { method: 'DELETE' });
+    await loadBurar();
+    selectedBurId = null;
+    document.getElementById('burModal').style.display = 'none';
+  } catch (e) {
+    alert('Fel: ' + e.message);
+  }
+}
+
+// Update statistics
+function updateStats() {
+  document.getElementById('totalBurar').textContent = burar.length;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const kolladeIdag = burar.filter(b => {
+    if (!b.checked_at) return false;
+    return new Date(b.checked_at) >= today;
+  }).length;
+  document.getElementById('kolladeIdag').textContent = kolladeIdag;
+
+  const threeDaysAgo = new Date();
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+  const nyligen = burar.filter(b => {
+    if (!b.checked_at) return false;
+    return new Date(b.checked_at) >= threeDaysAgo;
+  }).length;
+  document.getElementById('nyligenKollade').textContent = nyligen;
+}
+
+// Load all burar
 async function loadBurar() {
   try {
     burar = await api('/burar');
@@ -213,41 +194,13 @@ async function loadBurar() {
     updateStats();
   } catch (e) {
     console.error('Failed to load burar:', e);
-    document.getElementById('karta').innerHTML = '<p>Kunde inte ladda data</p>';
-  }
-}
-
-// Update statistics panels
-async function updateStats() {
-  try {
-    // Total burar
-    document.getElementById('totalBurar').textContent = burar.length;
-
-    // Kollade idag
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const kolladeIdag = burar.filter(b => {
-      const d = b.checked_at ? new Date(b.checked_at) : 0;
-      return d >= today;
-    }).length;
-    document.getElementById('kolladeIdag').textContent = kolladeIdag;
-
-    // Nyligen kollade (last 3 days)
-    const threeDaysAgo = new Date();
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-    const nyligen = burar.filter(b => {
-      const d = b.checked_at ? new Date(b.checked_at) : 0;
-      return d >= threeDaysAgo;
-    }).length;
-    document.getElementById('nyligenKollade').textContent = nyligen;
-  } catch (e) {
-    console.error('Stats error:', e);
+    document.getElementById('karta').innerHTML = '<p style="padding:20px">Kunde inte ladda...</p>';
   }
 }
 
 // RFID Login
 async function loginWithRFID() {
-  const tag = prompt('Skanna eller ange din RFID-tagg:');
+  const tag = prompt('Skanna eller ange RFID-taggen:');
   if (!tag) return;
   try {
     const data = await api('/auth/login', { method: 'POST', body: JSON.stringify({ rfid_tag: tag }) });
@@ -256,11 +209,10 @@ async function loginWithRFID() {
     document.getElementById('userInfo').style.display = 'flex';
     document.getElementById('userName').textContent = currentEmployee.name;
     document.getElementById('loginBtn').textContent = 'Logga ut';
-    document.getElementById('loginBtn').onclick = logout;
     document.getElementById('redigeringsLägeBtn').style.display = 'inline-block';
     await loadBurar();
   } catch (e) {
-    alert('Ogiltig RFID-tagg: ' + e.message);
+    alert('Felaktig RFID: ' + e.message);
   }
 }
 
@@ -269,10 +221,9 @@ function logout() {
   currentEmployee = null;
   document.getElementById('userInfo').style.display = 'none';
   document.getElementById('loginBtn').textContent = 'Logga in med RFID';
-  document.getElementById('loginBtn').onclick = loginWithRFID;
   document.getElementById('redigeringsLägeBtn').style.display = 'none';
   editingMode = false;
-  document.getElementById('redigeringsLägeBtn').textContent = 'Släpp på redigeringsläge';
+  selectedBurId = null;
   document.querySelectorAll('.bur').forEach(b => b.classList.remove('selected'));
   document.getElementById('burModal').style.display = 'none';
   loadBurar();
@@ -281,45 +232,28 @@ function logout() {
 // Toggle edit mode
 function toggleEditMode() {
   editingMode = !editingMode;
-  document.getElementById('redigeringsLägeBtn').textContent = editingMode ? 'Avsluta redigeringsläge' : 'Släpp på redigeringsläge';
-  document.querySelectorAll('.bur').forEach(b => {
-    b.style.cursor = editingMode ? 'grab' : 'pointer';
-  });
+  document.getElementById('redigeringsLägeBtn').textContent = editingMode ? 'Avsluta redigering' : 'Redigera läge';
   if (!editingMode) {
-    selectBur(null);
+    selectedBurId = null;
     document.getElementById('burModal').style.display = 'none';
   }
 }
 
-// Modal buttons
-document.getElementById('btnSparaBur').addEventListener('click', createBur);
-document.getElementById('btnAvbryt').addEventListener('click', () => {
+// Modal handlers
+document.getElementById('btnSparaBur').onclick = createBur;
+document.getElementById('btnAvbryt').onclick = () => {
   document.getElementById('burModal').style.display = 'none';
-});
+  selectedBurId = null;
+};
 
 // Init
-async function initApp() {
-  // Check if already logged in
-  const token = localStorage.getItem('token');
-  if (token) {
-    try {
-      const data = await api('/auth/login', { method: 'POST', body: JSON.stringify({ rfid_tag: token }) }); // reuse token as tag? Not ideal but works for demo
-      currentEmployee = data.employee;
-      document.getElementById('userInfo').style.display = 'flex';
-      document.getElementById('userName').textContent = currentEmployee.name;
-      document.getElementById('loginBtn').textContent = 'Logga ut';
-      document.getElementById('loginBtn').onclick = logout;
-      document.getElementById('redigeringsLägeBtn').style.display = 'inline-block';
-    } catch {
-      logout();
-    }
-  }
-
+function initApp() {
   document.getElementById('loginBtn').addEventListener('click', loginWithRFID);
   document.getElementById('redigeringsLägeBtn').addEventListener('click', toggleEditMode);
-
-  await loadBurar();
+  loadBurar();
 }
 
-// Export for use in HTML
 window.initApp = initApp;
+window.createBur = createBur;
+window.updateBur = updateBur;
+window.deleteBur = deleteBur;
