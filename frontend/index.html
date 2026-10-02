@@ -17,11 +17,25 @@
         </svg>
       </div>
       <nav class="nav">
-        <button id="loginBtn" class="btn btn-primary">Logga in med RFID</button>
+        <div id="loginSection" style="display:flex;gap:8px;align-items:center;">
+          <button id="loginBtn" class="btn btn-primary">Logga in</button>
+        </div>
+        <div id="userInfo" style="display:none;align-items:center;gap:8px;">
+          <span>Välkommen <strong id="userName"></strong></span>
+          <button id="usersBtn" class="btn btn-secondary" style="display:none;">Användare</button>
+          <button class="btn btn-secondary" onclick="window.logout()">Logga ut</button>
+        </div>
       </nav>
-      <div class="user-info" id="userInfo" style="display:none;">
-        <span>Välkommen <strong id="userName"></strong></span>
-        <button class="btn btn-secondary" onclick="window.logout()">Logga ut</button>
+
+      <!-- Login modal -->
+      <div id="loginModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:360px;">
+          <h3>Logga in</h3>
+          <p>Välj användare för att logga in:</p>
+          <select id="loginEmployee" style="padding:8px;width:100%;margin:12px 0;border-radius:4px;border:1px solid #ccc;"></select>
+          <button id="btnLoginEmployee" class="btn btn-primary" style="width:100%;">Logga in</button>
+          <button onclick="document.getElementById('loginModal').style.display='none';" class="btn btn-secondary" style="width:100%;margin-top:4px;">Avbryt</button>
+        </div>
       </div>
     </header>
 
@@ -44,10 +58,36 @@
 
         <div class="panel panel-karta" style="margin-top:24px;">
           <h2>Lagerkarta</h2>
-          <div id="karta" class="karta"></div>
+          <div id="karta" class="karta">
+            <div class="karta-grid-overlay"></div>
+          </div>
           <button id="redigeringsLägeBtn" class="btn btn-sm" style="margin-top:8px;display:none;">Släpp på redigeringsläge</button>
         </div>
       </section>
+
+      <!-- Users modal -->
+      <div id="usersModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:440px;">
+          <h3>Användare</h3>
+          <div id="employeeList" style="margin:16px 0;"></div>
+          <div style="display:flex;gap:8px;">
+            <button id="btnNewEmployee" class="btn btn-primary">Ny användare</button>
+            <button id="btnCancelEmployee" class="btn btn-secondary">Stäng</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Employee modal -->
+      <div id="employeeModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:380px;">
+          <h3 id="employeeModalTitle">Ny användare</h3>
+          <input type="text" id="employeeName" placeholder="Användarnamn" style="width:100%;">
+          <div style="margin-top:16px;display:flex;gap:8px;">
+            <button id="btnSaveEmployee" class="btn btn-primary">Spara</button>
+            <button id="btnCancelEmployee" class="btn btn-secondary">Avbryt</button>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 

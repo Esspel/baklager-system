@@ -36,16 +36,6 @@ async function init() {
     CREATE TABLE IF NOT EXISTS employees (
       id SERIAL PRIMARY KEY,
       name VARCHAR(100) NOT NULL,
-      rfid_tag VARCHAR(50),
-      created_at TIMESTAMP DEFAULT NOW()
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS rfid_tags (
-      id SERIAL PRIMARY KEY,
-      tag_id VARCHAR(50) UNIQUE NOT NULL,
-      employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
@@ -84,16 +74,10 @@ async function init() {
   if (parseInt(empCount.rows[0].count) === 0) {
     console.log('Seeding employees...');
     await pool.query(
-      `INSERT INTO employees (name, rfid_tag) VALUES
-        ('Anna Andersson', 'RFID-001'),
-        ('Björn Lund', 'RFID-002'),
-        ('Carina Nilsson', 'RFID-003')`
-    );
-    await pool.query(
-      `INSERT INTO rfid_tags (tag_id, employee_id) VALUES
-        ('RFID-001', 1),
-        ('RFID-002', 2),
-        ('RFID-003', 3)`
+      `INSERT INTO employees (name) VALUES
+        ('Anna Andersson'),
+        ('Björn Lund'),
+        ('Carina Nilsson')`
     );
   }
 

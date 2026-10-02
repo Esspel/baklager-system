@@ -198,8 +198,8 @@ body {
 /* Karta */
 .karta {
   width: 100%;
-  height: 400px;
-  background: var(--coop-gray-200);
+  height: 500px;
+  background: linear-gradient(135deg, var(--coop-gray-100) 0%, var(--coop-gray-200) 100%);
   border-radius: 12px;
   position: relative;
   overflow: hidden;
@@ -207,17 +207,42 @@ body {
   touch-action: none;
 }
 
+.karta-grid-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    linear-gradient(rgba(0,138,20,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,138,20,0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+.karta-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+
+.karta-controls .btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
 /* Rullbur */
 .bur {
   position: absolute;
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   font-family: 'CoopSans', sans-serif;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--coop-svart);
   cursor: grab;
@@ -226,15 +251,78 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   text-align: center;
   line-height: 1.2;
+  gap: 2px;
 }
 
-.bur:hover { transform: scale(1.05); box-shadow: 0 4px 16px rgba(0,0,0,0.18); }
-.bur:active { cursor: grabbing; }
+.bur:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+.bur:active { cursor: grabbing; transform: scale(1.04); }
 .bur.selected { outline: 3px solid var(--coop-blue-500); outline-offset: 2px; }
 
-.bur[data-status="gron"] { background: var(--coop-gron-300); border: 2px solid var(--coop-gron-500); }
-.bur[data-status="gul"] { background: var(--coop-yellow-400); border: 2px solid var(--coop-yellow-600); }
-.bur[data-status="röd"] { background: var(--coop-red-400); border: 2px solid var(--coop-red-600); }
+.bur[data-status="gron"] { background: var(--coop-gron-300); border: 2px solid var(--coop-gron-600); }
+.bur[data-status="gul"] { background: var(--coop-yellow-400); border: 2px solid var(--coop-yellow-700); }
+.bur[data-status="röd"] { background: var(--coop-red-500); color: var(--coop-vit); border: 2px solid var(--coop-red-700); }
+
+.bur-name {
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot[data-status="gron"] { background: var(--coop-gron-500); box-shadow: 0 0 8px var(--coop-gron-500); }
+.status-dot[data-status="gul"] { background: var(--coop-yellow-600); box-shadow: 0 0 8px var(--coop-yellow-600); }
+.status-dot[data-status="röd"] { background: var(--coop-red-700); box-shadow: 0 0 8px var(--coop-red-700); }
+
+.checkin-hint {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--coop-gray-800);
+  color: var(--coop-vit);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+
+.bur:hover .checkin-hint { opacity: 1; }
+
+/* Tooltip */
+.bur-tooltip {
+  position: fixed;
+  background: var(--coop-svart);
+  color: var(--coop-vit);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 2000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.bur-tooltip.show { opacity: 1; }
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--coop-gray-600);
+  font-family: 'CoopSans', sans-serif;
+}
 
 /* Modal */
 .modal {

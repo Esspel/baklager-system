@@ -21,6 +21,9 @@ const pool = new Pool({
 
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
 
+// Simple active session tracking (in-memory for now)
+const activeSessions = new Map();
+
 // Middleware for auth
 function auth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -44,18 +47,16 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// --- AUTH / RFID LOGIN ---
+// --- AUTH / LOGIN ---
+// Login with employee ID (simple session-based auth)
 app.post('/api/auth/login', async (req, res) => {
-  const { rfid_tag } = req.body;
-  if (!rfid_tag) return res.status(400).json({ error: 'RFID tag required' });
+  const { employee_id } = req.body;
+  if (!employee_id) return res.status(400).json({ error: 'Employee ID required' });
 
-  const result = await pool.query(
-    'SELECT e.*, r.name FROM employees e JOIN rfid_tags r ON r.employee_id = e.id WHERE r.tag_id = $1',
-    [rfid_tag]
-  );
+  const result = await pool.query('SELECT id, name FROM employees WHERE id = $1', [employee_id]);
 
   if (result.rows.length === 0) {
-    return res.status(401).json({ error: 'Invalid RFID tag' });
+    return res.status(401).json({ error: 'Invalid employee ID' });
   }
 
   const employee = result.rows[0];
@@ -156,8 +157,8 @@ app.post('/api/checkin', auth, async (req, res) => {
     if (!bur_id) return res.status(400).json({ error: 'bur_id required' });
 
     const result = await pool.query(
-      'INSERT INTO checkins (bur_id, employee_id, rfid_tag, status) VALUES ($1, $2, $3, $4) RETURNING *',
-      [bur_id, req.employee.id, req.employee.rfid || 'unknown', 'kollad']
+      'INSERT INTO checkins (bur_id, employee_id, status) VALUES ($1, $2, $3) RETURNING *',
+      [bur_id, req.employee.id, 'kollad']
     );
 
     // Reset bur to green after checkin
@@ -169,10 +170,10 @@ app.post('/api/checkin', auth, async (req, res) => {
   }
 });
 
-// --- EMPLOYEES / RFID ---
+// --- EMPLOYEES (User Management) ---
 app.get('/api/employees', auth, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, rfid_tag FROM employees ORDER BY name');
+    const result = await pool.query('SELECT id, name, created_at FROM employees ORDER BY name');
     res.json(result.rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -181,10 +182,11 @@ app.get('/api/employees', auth, async (req, res) => {
 
 app.post('/api/employees', auth, async (req, res) => {
   try {
-    const { name, rfid_tag } = req.body;
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name required' });
     const result = await pool.query(
-      'INSERT INTO employees (name, rfid_tag) VALUES ($1, $2) RETURNING id, name, rfid_tag',
-      [name, rfid_tag || null]
+      'INSERT INTO employees (name) VALUES ($1) RETURNING id, name',
+      [name]
     );
     res.status(201).json(result.rows[0]);
   } catch (e) {
@@ -192,21 +194,27 @@ app.post('/api/employees', auth, async (req, res) => {
   }
 });
 
-app.post('/api/employees/:id/rfid', auth, async (req, res) => {
+app.put('/api/employees/:id', auth, async (req, res) => {
   try {
-    const { tag_id } = req.body;
-    await pool.query('UPDATE rfid_tags SET employee_id = $1, tag_id = $2 WHERE id = $3',
-      [req.params.id, tag_id, req.params.id]);
-    const emp = await pool.query('SELECT * FROM employees WHERE id = $1', [req.params.id]);
-    res.json(emp.rows[0]);
+    const { name } = req.body;
+    const result = await pool.query(
+      'UPDATE employees SET name = $1 WHERE id = $2 RETURNING id, name',
+      [name, req.params.id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.delete('/api/employees/:id/rfid', auth, async (req, res) => {
-  await pool.query('UPDATE rfid_tags SET employee_id = NULL WHERE id = $1', [req.params.id]);
-  res.json({ success: true });
+app.delete('/api/employees/:id', auth, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM employees WHERE id = $1', [req.params.id]);
+    res.json({ deleted: result.rowCount > 0 });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // --- STATISTICS ---
