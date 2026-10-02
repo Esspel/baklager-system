@@ -3,7 +3,15 @@ let burar = [];
 let editingMode = false;
 let selectedBurId = null;
 let currentEmployee = null;
-const API = '/api'; // If served from same origin; else adjust
+
+// Vi proxyar från Nginx: /api/ -> backend:3000
+// Men ibland sker felet att backend svarar med HTML istället för JSON.
+// Låt oss skicka direkt till localhost:3000 om vi är i debug-läge,
+const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:3000'
+  : '/api';
+
+const API = BACKEND_URL; // hela bas-URL:en
 
 // Simple wrapper for fetch with error handling
 async function api(endpoint, options = {}) {
@@ -14,10 +22,18 @@ async function api(endpoint, options = {}) {
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(endpoint, { ...options, headers });
+  // Bygg full URL: om BACKEND_URL redan innehåller http://..., använd som är
+  // annars lägg till /api i början av endpoint
+  const url = BACKEND_URL.startsWith('http') ? BACKEND_URL + endpoint : BACKEND_URL + '/api' + endpoint;
+
+  console.log('API call to:', url, 'options:', options);
+  const res = await fetch(url, { ...options, headers });
+  console.log('API response status:', res.status);
+
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || `HTTP ${res.status}`);
+    // Om vi får HTML svar (t.ex. 404-fil hittades), skjut ut ett tydligt meddelande
+    const text = await res.text().catch(() => 'unknown error');
+    throw new Error(`HTTP ${res.status}: ${text.substring(0, 200)}`);
   }
   return res.json();
 }
