@@ -171,7 +171,7 @@ app.post('/api/checkin', auth, async (req, res) => {
 });
 
 // --- EMPLOYEES (User Management) ---
-app.get('/api/employees', auth, async (req, res) => {
+app.get('/api/employees', async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name, created_at FROM employees ORDER BY name');
     res.json(result.rows);
